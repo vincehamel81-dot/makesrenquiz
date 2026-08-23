@@ -1,0 +1,110 @@
+[
+  {
+    "question": "What is Ren Gill's father's name?",
+    "answer": "Martin Gill"
+  },
+  {
+    "question": "What does Ren's father do?",
+    "answer": "He's also a songwriter"
+  },
+  {
+    "question": "What date was Ren Gill born?",
+    "answer": "29 March 1990"
+  },
+  {
+    "question": "Ren was misdiagnosed for years before doctors identified the real cause of his illness. How long was he misdiagnosed?",
+    "answer": "About 6 years (roughly 2009 to 2015)"
+  },
+  {
+    "question": "What illness was Ren eventually diagnosed with after years of misdiagnosis?",
+    "answer": "Lyme disease"
+  },
+  {
+    "question": "Besides Lyme disease, what other conditions has Ren spoken about living with?",
+    "answer": "Mast Cell Activation Disorder, ME/CFS, ADHD, chronic depression, and intermittent episodes of psychosis"
+  },
+  {
+    "question": "What experimental treatment has Ren undergone multiple times for his illness?",
+    "answer": "Stem cell transplants (in the US in 2016/2017, and again in Mexico in 2025)"
+  },
+  {
+    "question": "Which Ren album debuted at Number 1 on the UK Albums Chart in October 2023?",
+    "answer": "Sick Boi"
+  },
+  {
+    "question": "Who is 'For Joe' written about?",
+    "answer": "Joe Hughes, Ren's childhood best friend, who died by suicide in December 2010"
+  },
+  {
+    "question": "In what year was Ren born?",
+    "answer": "1990",
+    "options": ["1996", "1993", "1995"]
+  },
+  {
+    "question": "In what year did 'Hi Ren' come out?",
+    "answer": "2022",
+    "options": ["2020", "2021", "2023"]
+  },
+  {
+    "question": "What Welsh county was Ren born in?",
+    "answer": "Gwynedd",
+    "options": ["Powys", "Conwy", "Denbighshire"]
+  },
+  {
+    "question": "At what age did Ren start busking?",
+    "answer": "17",
+    "options": ["15", "19", "21"]
+  },
+  {
+    "question": "What band did Ren form with classmate Charlie Fowler while busking around Bath and Brighton?",
+    "answer": "Trick the Fox",
+    "options": ["The Big Push", "The Skinner Brothers", "Renaissance"]
+  },
+  {
+    "question": "What university did Ren attend, studying music?",
+    "answer": "Bath Spa University",
+    "options": ["Cardiff University", "University of Brighton", "Goldsmiths, University of London"]
+  },
+  {
+    "question": "Which major label signed Ren to a development deal in 2010 after a producer heard him busking?",
+    "answer": "Sony",
+    "options": ["Universal", "Warner", "EMI"]
+  },
+  {
+    "question": "Why did Sony eventually end Ren's development deal?",
+    "answer": "He became too ill to keep working as his (then-undiagnosed) illness worsened"
+  },
+  {
+    "question": "The 'Hi Ren' music video's audio is a single take, but how many video takes did it require to capture (they didn't have permission to be in the filming location)?",
+    "answer": "Four",
+    "options": ["One", "Two", "Six"]
+  },
+  {
+    "question": "How much did Ren raise for the RNLI volunteer crews who searched for his friend Joe?",
+    "answer": "£21,000",
+    "options": ["£5,000", "£10,000", "£50,000"]
+  },
+  {
+    "question": "Ren's 2023 diss track 'Dumb King Come' was aimed at which rapper?",
+    "answer": "King Dotta",
+    "options": ["Kujo", "Token", "Chris Webby"]
+  },
+  {
+    "question": "Ren's track 'Kujo Beat Down' is a diss track responding to whom?",
+    "answer": "A producer (Kujobeats) Ren accused of trying to claim copyright over, defame, and defraud him regarding 'Sick Boi'",
+    "options": ["A rival record label executive", "A music journalist who reviewed Sick Boi negatively", "Another rapper who covered Hi Ren without credit"]
+  },
+  {
+    "question": "What is the handle of Ren's official YouTube channel?",
+    "answer": "@RenMakesMusic",
+    "options": ["@ReallyRen", "@RenGillMusic", "@TheRealRen"]
+  },
+  {
+    "question": "Is Ren classically trained or self-taught as a musician?",
+    "answer": "Self-taught"
+  },
+  {
+    "question": "Which Ren song is a purely instrumental piano piece, with no lyrics?",
+    "answer": "Mackay"
+  }
+]

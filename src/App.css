@@ -1,0 +1,599 @@
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  text-align: left;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border, #333);
+  flex-wrap: wrap;
+}
+
+.tabs a {
+  background: none;
+  border: none;
+  padding: 10px 14px;
+  cursor: pointer;
+  opacity: 0.6;
+  text-decoration: none;
+  color: inherit;
+}
+
+.tabs a.active {
+  opacity: 1;
+  border-bottom: 2px solid currentColor;
+}
+
+.quiz .prompt {
+  font-size: 1.2rem;
+  margin: 16px 0;
+}
+
+.autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete input,
+.quiz > input,
+.lookup input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-size: 1rem;
+}
+
+.autocomplete input {
+  margin-top: 13px;
+}
+
+.autocomplete-list {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  background: var(--bg, #1a1a1a);
+  border: 1px solid var(--border, #444);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.autocomplete-list li {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.autocomplete-list li.active,
+.autocomplete-list li:hover {
+  background: rgba(128, 128, 128, 0.25);
+}
+
+/* The one stable card the whole answer area lives in — pre- and post-reveal
+   alike — so nothing above the fold changes size or position when the
+   answer comes back. Only the left accent stripe and a faint tint shift. */
+.answer-surface {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-border);
+  border-left: 3px solid var(--surface-border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.answer-surface.revealed.correct {
+  border-left-color: var(--good);
+  background: linear-gradient(var(--good-bg), var(--good-bg)), var(--surface);
+}
+
+.answer-surface.revealed.wrong {
+  border-left-color: var(--bad);
+  background: linear-gradient(var(--bad-bg), var(--bad-bg)), var(--surface);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.actions-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-primary {
+  align-self: flex-start;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 9px 20px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn-primary.next-btn {
+  margin-top: 16px;
+}
+
+.btn-secondary {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-h);
+  font-size: 0.88rem;
+  padding: 7px 14px;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.choices {
+  display: grid;
+  gap: 8px;
+}
+
+.choices button {
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.choices button:not(:disabled):hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.choices button.correct {
+  background: var(--good-bg);
+  border-color: var(--good);
+  color: var(--text-h);
+  opacity: 1;
+  font-weight: 600;
+}
+
+.choices button.wrong-picked {
+  background: var(--bad-bg);
+  border-color: var(--bad);
+  color: var(--text-h);
+  opacity: 1;
+}
+
+.choices button.dim {
+  opacity: 0.5;
+}
+
+.choices button:disabled {
+  cursor: default;
+}
+
+.feedback-text {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.feedback-text.is-correct {
+  color: var(--good);
+}
+
+.feedback-text.is-wrong {
+  color: var(--bad);
+}
+
+.feedback .btn-primary {
+  margin-top: 14px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 24px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.lookup-song {
+  margin-bottom: 14px;
+}
+
+.trivia {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.clip-player button {
+  padding: 10px 16px;
+}
+
+/* Shared row-based table look for the Songs and Song Knowledge pages, so
+   browsing your catalog and checking your stats feel like the same app
+   instead of two different UIs. Each page supplies its own column widths
+   via a modifier class; everything else (hover, header treatment, sort
+   arrows) is common. */
+.data-table {
+  margin-top: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 20px;
+}
+
+.data-table-row {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+a.data-table-row,
+.data-table-row[role='button'] {
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.data-table-row:hover {
+  background: var(--accent-bg);
+}
+
+.data-table-header {
+  cursor: default;
+  font-size: 0.76rem;
+  font-weight: 600;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.data-table-header:hover {
+  background: none;
+}
+
+.data-table-header span.sortable {
+  cursor: pointer;
+}
+
+.data-table-header span.sortable:hover {
+  opacity: 0.75;
+  color: var(--text-h);
+}
+
+.data-table-header span.sort-active {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.songs-table-row {
+  grid-template-columns: 1fr 64px 56px 56px 64px 40px;
+}
+
+.knowledge-table-row {
+  grid-template-columns: 1fr 118px 118px 118px 80px;
+}
+
+.song-link-title {
+  min-width: 0;
+}
+
+.song-link-album {
+  display: block;
+  font-size: 0.78rem;
+  opacity: 0.55;
+}
+
+.mini-badge {
+  font-size: 0.78rem;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+a.mini-badge {
+  text-decoration: none;
+  color: inherit;
+}
+
+.mini-badge.yes {
+  opacity: 1;
+}
+
+.lyric-header {
+  opacity: 0.55;
+  font-style: italic;
+  font-size: 0.85em;
+  margin-top: 12px !important;
+}
+
+.lyrics-editor {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  padding: 10px;
+  margin-top: 8px;
+}
+
+.clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.clip-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.clip-list-item > span {
+  width: 3ch;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.egg-delete {
+  float: right;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.egg-delete:hover {
+  opacity: 1;
+  color: #c33;
+}
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  opacity: 0.8;
+}
+
+.trend-chart {
+  position: relative;
+  margin: 12px 0 24px;
+}
+
+.trend-chart svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.trend-grid {
+  stroke: var(--border, #333);
+  stroke-width: 1;
+}
+
+.trend-axis-label {
+  fill: var(--text, #888);
+  font-size: 10px;
+}
+
+.trend-line {
+  stroke: var(--accent, #aa3bff);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-dot {
+  fill: var(--accent, #aa3bff);
+}
+
+.trend-crosshair {
+  stroke: var(--border, #333);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.trend-tooltip {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--accent-bg, rgba(170, 59, 255, 0.1));
+  font-size: 0.85rem;
+  display: inline-block;
+}
+
+.clip-list-item {
+  justify-content: space-between;
+}
+
+.clip-list-item .egg-delete {
+  float: none;
+}
+
+.egg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.1);
+}
+
+.egg-form input[type='text'],
+.egg-form textarea,
+.egg-form select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  font-family: inherit;
+}
+
+.egg-form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.song-meta {
+  opacity: 0.7;
+  margin-top: -8px;
+}
+
+.lyrics p {
+  margin: 4px 0;
+}
+
+.easter-eggs {
+  list-style: none;
+  padding: 0;
+}
+
+.easter-eggs li {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.1);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+}
+
+.badge.confirmed {
+  background: rgba(40, 160, 80, 0.3);
+}
+
+.badge.theory {
+  background: rgba(200, 160, 40, 0.3);
+}
+
+.rating-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+
+.rating-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rating-field input[type='number'] {
+  width: 6ch;
+  padding: 6px 8px;
+}
+
+.song-detail-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.danger-link {
+  background: none;
+  border: none;
+  color: #c33;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.danger-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.video-embed-block {
+  margin: 8px 0 16px;
+}
+
+.youtube-url-input {
+  width: 320px;
+  max-width: 100%;
+  padding: 6px 8px;
+  margin-left: 4px;
+}
+
+.edit-title-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 0.8em;
+  vertical-align: middle;
+}
+
+.edit-title-btn:hover {
+  opacity: 1;
+}
+
+.title-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.title-editor input {
+  font-size: 1.3rem;
+  padding: 6px 8px;
+  flex: 1;
+  max-width: 420px;
+}
+
+.title-error {
+  color: #c33;
+  font-size: 0.85rem;
+}
+
+.video-embed {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-top: 10px;
+}
+
+.video-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 6px;
+}
+
+.video-embed.soundcloud-embed {
+  aspect-ratio: auto;
+  height: 166px;
+}

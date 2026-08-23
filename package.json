@@ -1,0 +1,33 @@
+{
+  "name": "renquiz",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"node --watch server/index.js\"",
+    "dev:client": "vite",
+    "dev:server": "node --watch server/index.js",
+    "build": "vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "seed:songs": "node tools/parseSongs.js && node tools/seedDb.js && node tools/syncFactQuestions.js",
+    "fetch:audio": "node tools/fetchAudio.js",
+    "fetch:lyrics": "node tools/scrapeLyrics.js && node tools/selectLyricQuestions.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "cheerio": "^1.2.0",
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.75.0",
+    "vite": "^8.2.0"
+  }
+}

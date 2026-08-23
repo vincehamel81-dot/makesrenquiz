@@ -1,0 +1,100 @@
+[
+  {
+    "song": "Dr. Meyers",
+    "term": "Michael",
+    "description": "At the end of the song Ren addresses the doctor as \"Michael\" even though the character's name is Meyers — widely read by fans as a nod to Michael Myers from the Halloween horror franchise (Meyers/Myers being a near-homophone).",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Fire in the Booth",
+    "term": "eight",
+    "description": "Contains a line repeating the word \"eight\" eight times in a row — numeric wordplay fans have picked up on.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Dominoes",
+    "term": "insecuri-teeth",
+    "description": "\"Smiles show all my insecuri-teeth\" — a portmanteau of \"insecurities\" and \"teeth\", visible in a smile. Classic Ren double-entendre wordplay.",
+    "confidence": "confirmed",
+    "quizzable": true
+  },
+  {
+    "song": "Hi Ren",
+    "term": null,
+    "description": "The song opens and closes with yodeling, read by fans as a symbolic doorway opening into Ren's chaotic inner mind at the start and closing it at the end.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Hi Ren",
+    "term": null,
+    "description": "The core of the song is structured as an argument between two opposing halves of Ren's psyche — his bright, vulnerable self and a gritty, cynical internal \"demon\" voice.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Hi Ren",
+    "term": null,
+    "description": "The shifting rhythm, tap-dancing-style percussion, acoustic guitar pacing, and theatrical vocal delivery are read as mirroring the erratic, unpredictable experience of severe mental health struggles and chronic illness.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Hi Ren",
+    "term": null,
+    "description": "Fans connect \"Hi Ren\" to Ren's other storytelling tracks (The Tale of Jenny & Screech, Vincent's Tale) as part of a shared narrative universe — an amalgamation of different character pain points, from rage and numbness to hope and regret.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Hi Ren",
+    "term": null,
+    "description": "Later tracks like Sick Boi and Kujo Beat Down feature direct audio callbacks to this song — grunting, choral motifs, and lyrical nods (such as a \"hope/rope\" double meaning) that loop back to the foundation laid in Hi Ren.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Sick Boi",
+    "term": null,
+    "description": "The title is a double entendre on \"ill\" — meaning both skilled/impressive (hip-hop slang) and literally sick, tying the song's medical and lyrical themes together in one word.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Sick Boi",
+    "term": null,
+    "description": "The track samples the Koutev Bulgarian National Ensemble's choral piece \"Bre Petrunko\".",
+    "confidence": "confirmed",
+    "quizzable": false
+  },
+  {
+    "song": "Money Game",
+    "term": null,
+    "description": "The trilogy's best-known device is \"the seashell story\" — a childlike market parable about artificial scarcity that Ren uses to explain how capitalism, branding, and manipulation actually work.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Money Game",
+    "term": "saint into a killer",
+    "description": "\"Money turns a saint into a killer\" — a recurring hook capturing the song's core idea that the pursuit of wealth erodes morality.",
+    "confidence": "theory",
+    "quizzable": true
+  },
+  {
+    "song": "Genesis",
+    "term": null,
+    "description": "References Noah being late for the ark as a metaphor for missed opportunities and the cost of inaction.",
+    "confidence": "theory",
+    "quizzable": false
+  },
+  {
+    "song": "Genesis",
+    "term": null,
+    "description": "\"Genesis, pain in the art; Genesis, aim for the heart\" — wordplay pairing similar-sounding phrases with different meanings. Fans read the song as a creative reset following the confrontation of Hi Ren and the diagnosis in Sick Boi — transformation arriving \"not as miracle, but as metre.\"",
+    "confidence": "theory",
+    "quizzable": false
+  }
+]

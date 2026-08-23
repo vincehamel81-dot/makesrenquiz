@@ -1,0 +1,44 @@
+[
+  {
+    "title": "Fire",
+    "slug": "fire",
+    "youtube_url": "https://www.youtube.com/watch?v=MZri14oE4Co",
+    "local": 107,
+    "remote": 205
+  },
+  {
+    "title": "I shot the sheriff (Big Push)",
+    "slug": "i-shot-the-sheriff-big-push",
+    "youtube_url": "https://www.youtube.com/watch?v=uSeCuR51rek",
+    "local": 310,
+    "remote": 479
+  },
+  {
+    "title": "Knock me down",
+    "slug": "knock-me-down",
+    "youtube_url": "https://www.youtube.com/watch?v=wMMrT7DIA44",
+    "local": 179,
+    "remote": 170
+  },
+  {
+    "title": "Love Music, Pt. 3",
+    "slug": "love-music-pt-3",
+    "youtube_url": "https://www.youtube.com/watch?v=OjElKx6q2Wc",
+    "local": 206,
+    "remote": 240
+  },
+  {
+    "title": "Wade in the water (Big push)",
+    "slug": "wade-in-the-water-big-push",
+    "youtube_url": "https://www.youtube.com/watch?v=DbL7Frf6nJI",
+    "local": 249,
+    "remote": 369
+  },
+  {
+    "title": "What went wrong",
+    "slug": "what-went-wrong",
+    "youtube_url": "https://www.youtube.com/watch?v=jmOdhbC6BZc",
+    "local": 195,
+    "remote": 187
+  }
+]
