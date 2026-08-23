@@ -1,5 +1,5 @@
 // Imports personal preference ratings from tools/ratings.csv (columns:
-// "Song list","On 1000") into songs.personal_rating. Matches by normalized
+// "Song list","On 1000") into user_song_ratings for user 1 (vince). Matches by normalized
 // title so casing/punctuation differences don't cause misses. Blank ratings
 // become 0. Re-runnable any time the CSV is updated.
 import { readFileSync } from 'node:fs';
@@ -56,7 +56,11 @@ const rows = lines.slice(1).map(parseCsvLine); // skip header
 const songs = db.prepare('SELECT id, title FROM songs').all();
 const byNormalized = new Map(songs.map((s) => [normalize(s.title), s]));
 
-const updateRating = db.prepare('UPDATE songs SET personal_rating = ? WHERE id = ?');
+const USER_ID = 1; // vince — see server/auth.js
+const updateRating = db.prepare(
+  `INSERT INTO user_song_ratings (user_id, song_id, rating) VALUES (?, ?, ?)
+   ON CONFLICT(user_id, song_id) DO UPDATE SET rating = excluded.rating`
+);
 
 let matched = 0;
 const unmatched = [];
@@ -69,7 +73,7 @@ for (const [titleRaw, ratingRaw] of rows) {
     unmatched.push(title);
     continue;
   }
-  updateRating.run(rating, song.id);
+  updateRating.run(USER_ID, song.id, rating);
   matched++;
 }
 
@@ -79,7 +83,13 @@ if (unmatched.length) {
   for (const t of unmatched) console.log(`  - "${t}"`);
 }
 
-const unrated = db.prepare('SELECT title FROM songs WHERE personal_rating = 0 ORDER BY title').all();
+const unrated = db
+  .prepare(
+    `SELECT title FROM songs s WHERE NOT EXISTS (
+       SELECT 1 FROM user_song_ratings r WHERE r.song_id = s.id AND r.user_id = ? AND r.rating != 0
+     ) ORDER BY title`
+  )
+  .all(USER_ID);
 if (unrated.length) {
   console.log(`\n${unrated.length} song(s) have no rating (0) — either genuinely 0 in the CSV or never in it:`);
   for (const s of unrated) console.log(`  - ${s.title}`);

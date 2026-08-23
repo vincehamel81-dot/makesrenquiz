@@ -50,8 +50,8 @@ export default function SongDetailPage() {
   useEffect(() => setShowVideo(false), [slug]);
 
   useEffect(() => {
-    if (detail) setRatingDraft(String(detail.personal_rating ?? 0));
-  }, [detail?.personal_rating]);
+    if (detail) setRatingDraft(String(detail.rating ?? 0));
+  }, [detail?.rating]);
 
   useEffect(() => {
     if (detail) setUrlDraft(detail.youtube_url ?? '');
@@ -91,7 +91,7 @@ export default function SongDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rating }),
     });
-    setDetail((d) => ({ ...d, personal_rating: rating }));
+    setDetail((d) => ({ ...d, rating }));
     setSavingRating(false);
   }
 
@@ -255,7 +255,7 @@ export default function SongDetailPage() {
             onChange={(e) => setRatingDraft(e.target.value)}
           />
         </label>
-        <button onClick={saveRating} disabled={savingRating || Number(ratingDraft) === detail.personal_rating}>
+        <button onClick={saveRating} disabled={savingRating || Number(ratingDraft) === detail.rating}>
           {savingRating ? 'Saving...' : 'Save'}
         </button>
       </div>

@@ -1,3 +1,13 @@
+-- Accounts. Single hardcoded row (id 1 = vince) for now — no auth yet, see
+-- server/auth.js. Real SSO later only needs to fill this table in properly
+-- and derive the id from a session instead of hardcoding it.
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE
+);
+INSERT OR IGNORE INTO users (id, name, email) VALUES (1, 'vince', 'vince.hamel81@gmail.com');
+
 CREATE TABLE IF NOT EXISTS albums (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -15,8 +25,16 @@ CREATE TABLE IF NOT EXISTS songs (
   follow_up_to_id INTEGER REFERENCES songs(id),
   youtube_url TEXT,
   duration_sec REAL,
-  notes TEXT,
-  personal_rating INTEGER NOT NULL DEFAULT 0 -- your own preference score, out of 1000
+  notes TEXT
+);
+
+-- Per-user preference rating (0-1000). Split out from `songs` so more than
+-- one person's ratings can coexist once there's real auth.
+CREATE TABLE IF NOT EXISTS user_song_ratings (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  song_id INTEGER NOT NULL REFERENCES songs(id),
+  rating INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, song_id)
 );
 
 CREATE TABLE IF NOT EXISTS lyrics_lines (
@@ -86,6 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_easter_eggs_song ON easter_eggs(song_id);
 
 CREATE TABLE IF NOT EXISTS quiz_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
   played_at TEXT NOT NULL DEFAULT (datetime('now')),
   question_type TEXT NOT NULL,
   question_id INTEGER REFERENCES questions(id),
@@ -98,3 +117,4 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
   points INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_attempts_played_at ON quiz_attempts(played_at);
+CREATE INDEX IF NOT EXISTS idx_attempts_user ON quiz_attempts(user_id);

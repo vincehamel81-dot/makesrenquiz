@@ -21,7 +21,7 @@ function sortValue(song, key) {
     case 'eggs':
       return song.easterEggCount;
     case 'rating':
-      return song.personal_rating;
+      return song.rating;
     case 'yt':
       return song.youtube_url ? 1 : 0;
     default:
@@ -94,8 +94,8 @@ export default function SongsListPage() {
             <span className={`mini-badge ${s.easterEggCount > 0 ? 'yes' : 'no'}`} title="Easter eggs">
               🥚 {s.easterEggCount}
             </span>
-            <span className={`mini-badge ${s.personal_rating > 0 ? 'yes' : 'no'}`} title="Your rating">
-              ⭐ {s.personal_rating || '-'}
+            <span className={`mini-badge ${s.rating > 0 ? 'yes' : 'no'}`} title="Your rating">
+              ⭐ {s.rating || '-'}
             </span>
             {s.youtube_url ? (
               <a

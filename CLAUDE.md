@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A personal music-trivia quiz app for the discography of the artist Ren (renquiz). It quizzes on audio clip recognition, lyric snippets, and song facts (themes, collaborators, follow-ups, album, bio, easter-egg references), tracks attempt history, and lets you browse full lyrics/trivia per song.
 
-Single-user, local-only right now — no auth, no `users` table. `songs.personal_rating` and all `quiz_attempts` rows are implicitly "yours."
+Single-user, local-only right now. There's a `users` table but no real auth — `server/auth.js`'s `currentUserId()` hardcodes `1` (seeded as vince in `schema.sql`) for every request. Swapping in real SSO later means changing only that function; every route already reads/writes `quiz_attempts.user_id` and `user_song_ratings` through it.
 
 ## Commands
 
@@ -41,3 +41,5 @@ Other one-off tools: `tools/importRatings.js` (from `tools/ratings.csv`), `tools
 **Client**: React + Vite, `react-router-dom` for the 6 pages under `src/pages/` (Quiz, Songs list/detail, History, Song Knowledge, Lyric lookup), wired in `src/App.jsx`.
 
 **Deletion semantics**: deleting a song (`DELETE /api/songs/:slug`) cascades to its lyrics/questions/easter-eggs but *detaches* (nulls `song_id`/`question_id` on, doesn't delete) any `quiz_attempts` referencing it — score history is meant to survive content changes underneath it.
+
+**Per-user vs. shared data**: `quiz_attempts` (and thus `/api/history`, `/api/stats/songs`) and `user_song_ratings` are scoped by `user_id` via `currentUserId(req)`. Everything else — the question bank itself, including `weight`/`times_asked`/`times_correct` recency damping in `questionTypes.js` — is global/shared across all users, not personalized. That's a deliberate scope line for the current single-user setup, not an oversight.

@@ -6,6 +6,7 @@ import { db } from './db.js';
 import { generateSession, buildChoices, markAsked, randomTriviaForSong } from './questionTypes.js';
 import { applyFeedback } from './feedback.js';
 import { rebuildLyricQuestions } from './lyricQuestions.js';
+import { currentUserId } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -20,15 +21,17 @@ app.get('/api/songs', (req, res) => {
   if (!req.query.stats) {
     return res.json(db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all());
   }
+  const userId = currentUserId(req);
   const songs = db
     .prepare(
-      `SELECT s.id, s.title, s.slug, s.personal_rating, s.youtube_url, a.name as album_name,
+      `SELECT s.id, s.title, s.slug, s.youtube_url, a.name as album_name,
+              COALESCE((SELECT rating FROM user_song_ratings r WHERE r.song_id = s.id AND r.user_id = ?), 0) as rating,
               (SELECT COUNT(*) FROM lyrics_lines ll WHERE ll.song_id = s.id AND ll.is_header = 0) as lyricLineCount,
               (SELECT COUNT(*) FROM questions q WHERE q.song_id = s.id AND q.type = 'audio' AND q.status != 'retired') as clipCount,
               (SELECT COUNT(*) FROM easter_eggs e WHERE e.song_id = s.id AND e.deleted = 0) as easterEggCount
        FROM songs s LEFT JOIN albums a ON a.id = s.album_id ORDER BY s.title`
     )
-    .all();
+    .all(userId);
   res.json(songs);
 });
 
@@ -54,9 +57,10 @@ app.post('/api/attempts', (req, res) => {
   const { question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points } =
     req.body;
   db.prepare(
-    `INSERT INTO quiz_attempts (question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO quiz_attempts (user_id, question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
+    currentUserId(req),
     question_type,
     question_id ?? null,
     song_id ?? null,
@@ -101,20 +105,21 @@ app.get('/api/questions/:id/lyric-lines', (req, res) => {
 // as Song Knowledge — a correct 4-choice guess counts as 0.5 here too, so
 // the accuracy trend reflects actually knowing things, not luck.
 const CORRECT_WEIGHTED = `SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END)`;
-app.get('/api/history', (_req, res) => {
+app.get('/api/history', (req, res) => {
+  const userId = currentUserId(req);
   const daily = db
     .prepare(
       `SELECT date(played_at) as day, SUM(points) as points, COUNT(*) as attempts,
               ${CORRECT_WEIGHTED} as correct
-       FROM quiz_attempts GROUP BY day ORDER BY day`
+       FROM quiz_attempts WHERE user_id = ? GROUP BY day ORDER BY day`
     )
-    .all();
+    .all(userId);
   const byType = db
     .prepare(
       `SELECT question_type, COUNT(*) as attempts, ${CORRECT_WEIGHTED} as correct, SUM(points) as points
-       FROM quiz_attempts GROUP BY question_type`
+       FROM quiz_attempts WHERE user_id = ? GROUP BY question_type`
     )
-    .all();
+    .all(userId);
   res.json({ daily, byType });
 });
 
@@ -131,6 +136,10 @@ app.get('/api/songs/:slug/detail', (req, res) => {
     )
     .get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
+  const ratingRow = db
+    .prepare('SELECT rating FROM user_song_ratings WHERE song_id = ? AND user_id = ?')
+    .get(song.id, currentUserId(req));
+  song.rating = ratingRow?.rating ?? 0;
   const lyrics = db.prepare('SELECT line_no, text, is_header FROM lyrics_lines WHERE song_id = ? ORDER BY line_no').all(song.id);
   const easterEggs = db
     .prepare('SELECT id, term, description, confidence, source_url FROM easter_eggs WHERE song_id = ? AND deleted = 0 ORDER BY id')
@@ -235,6 +244,7 @@ app.delete('/api/songs/:slug', (req, res) => {
       `DELETE FROM questions WHERE easter_egg_id IN (SELECT id FROM easter_eggs WHERE song_id = ?)`
     ).run(id);
     db.prepare('DELETE FROM easter_eggs WHERE song_id = ?').run(id);
+    db.prepare('DELETE FROM user_song_ratings WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM questions WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM lyrics_lines WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM songs WHERE id = ?').run(id);
@@ -252,7 +262,10 @@ app.put('/api/songs/:slug/rating', (req, res) => {
   if (!song) return res.status(404).json({ error: 'not found' });
   const rating = Number(req.body.rating);
   if (!Number.isFinite(rating)) return res.status(400).json({ error: 'rating (number) required' });
-  db.prepare('UPDATE songs SET personal_rating = ? WHERE id = ?').run(rating, song.id);
+  db.prepare(
+    `INSERT INTO user_song_ratings (user_id, song_id, rating) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, song_id) DO UPDATE SET rating = excluded.rating`
+  ).run(currentUserId(req), song.id, rating);
   res.json({ ok: true, rating });
 });
 
@@ -301,14 +314,15 @@ app.get('/api/lookup', (req, res) => {
 // from the 4-choice fallback counts as half credit here — it reflects
 // recognition/hesitation, not the same confident recall as a free-typed
 // answer, even though the fraction itself isn't a literal accuracy %.
-app.get('/api/stats/songs', (_req, res) => {
+app.get('/api/stats/songs', (req, res) => {
+  const userId = currentUserId(req);
   const rows = db
     .prepare(
       `SELECT song_id, question_type, COUNT(*) as attempts,
               SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END) as correct
-       FROM quiz_attempts WHERE song_id IS NOT NULL GROUP BY song_id, question_type`
+       FROM quiz_attempts WHERE user_id = ? AND song_id IS NOT NULL GROUP BY song_id, question_type`
     )
-    .all();
+    .all(userId);
   const bucketOf = (type) => (type === 'lyric' ? 'lyrics' : type === 'audio' ? 'video' : 'other');
 
   const bySong = new Map();
@@ -325,12 +339,15 @@ app.get('/api/stats/songs', (_req, res) => {
     bucket.total += r.attempts;
   }
 
-  const songs = db.prepare('SELECT id, title, slug, personal_rating FROM songs ORDER BY title').all();
+  const ratings = new Map(
+    db.prepare('SELECT song_id, rating FROM user_song_ratings WHERE user_id = ?').all(userId).map((r) => [r.song_id, r.rating])
+  );
+  const songs = db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all();
   res.json(
     songs.map((s) => ({
       title: s.title,
       slug: s.slug,
-      rating: s.personal_rating,
+      rating: ratings.get(s.id) ?? 0,
       ...(bySong.get(s.id) ?? {
         lyrics: { correct: 0, total: 0 },
         video: { correct: 0, total: 0 },
