@@ -205,7 +205,7 @@ function probeDuration(filePath) {
 }
 
 const channelIndex = loadChannelIndex();
-const songs = db.prepare('SELECT * FROM songs ORDER BY title').all();
+const songs = await db.prepare('SELECT * FROM songs ORDER BY title').all();
 const report = existsSync(REPORT_PATH) ? JSON.parse(readFileSync(REPORT_PATH, 'utf-8')) : {};
 
 const insertQuestion = db.prepare(
@@ -262,7 +262,7 @@ for (const song of songs) {
       writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
 
       downloadAudio(videoId, path.join(RAW_DIR, song.slug));
-      updateSongUrl.run(`https://www.youtube.com/watch?v=${videoId}`, song.id);
+      await updateSongUrl.run(`https://www.youtube.com/watch?v=${videoId}`, song.id);
       console.log(`  downloaded`);
     } catch (err) {
       const detail = err.stderr ? err.stderr.toString().trim().split('\n').slice(-3).join(' | ') : err.message;
@@ -276,7 +276,7 @@ for (const song of songs) {
   let duration;
   try {
     duration = probeDuration(rawPath);
-    updateSongDuration.run(duration, song.id);
+    await updateSongDuration.run(duration, song.id);
   } catch {
     console.warn(`  could not probe duration for ${song.slug}, skipping clip generation`);
     continue;
@@ -286,11 +286,11 @@ for (const song of songs) {
   for (const frac of CLIP_FRACTIONS) {
     const startSec = Math.round(frac * duration);
     if (startSec + 3 > duration) continue; // too close to the end for a usable clip
-    if (existingQuestion.get(song.id, startSec)) continue;
+    if (await existingQuestion.get(song.id, startSec)) continue;
     const sliceLen = Math.min(CLIP_SLICE_SEC, duration - startSec);
     const fileName = sliceClip(song.slug, startSec, sliceLen);
     if (!fileName) continue;
-    insertQuestion.run(song.id, startSec, DEFAULT_PLAYBACK_SEC, fileName);
+    await insertQuestion.run(song.id, startSec, DEFAULT_PLAYBACK_SEC, fileName);
     clipsAdded++;
   }
   if (clipsAdded) console.log(`  +${clipsAdded} audio question(s) for "${song.title}"`);

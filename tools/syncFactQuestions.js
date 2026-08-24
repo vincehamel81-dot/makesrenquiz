@@ -15,19 +15,19 @@ function parseJsonArray(text) {
 
 let inserted = 0;
 
-function insertIfMissing(where, params, insertSql, insertParams) {
-  const exists = db.prepare(`SELECT 1 FROM questions WHERE ${where}`).get(...params);
+async function insertIfMissing(where, params, insertSql, insertParams) {
+  const exists = await db.prepare(`SELECT 1 FROM questions WHERE ${where}`).get(...params);
   if (!exists) {
-    db.prepare(insertSql).run(...insertParams);
+    await db.prepare(insertSql).run(...insertParams);
     inserted++;
   }
 }
 
-const songs = db.prepare('SELECT * FROM songs').all();
+const songs = await db.prepare('SELECT * FROM songs').all();
 
 for (const s of songs) {
   if (s.album_id) {
-    insertIfMissing(
+    await insertIfMissing(
       `type = 'album' AND song_id = ?`,
       [s.id],
       `INSERT INTO questions (type, song_id) VALUES ('album', ?)`,
@@ -35,7 +35,7 @@ for (const s of songs) {
     );
   }
   if (s.follow_up_to_id) {
-    insertIfMissing(
+    await insertIfMissing(
       `type = 'follow-up' AND song_id = ?`,
       [s.id],
       `INSERT INTO questions (type, song_id) VALUES ('follow-up', ?)`,
@@ -43,7 +43,7 @@ for (const s of songs) {
     );
   }
   for (const theme of parseJsonArray(s.themes)) {
-    insertIfMissing(
+    await insertIfMissing(
       `type = 'theme' AND song_id = ? AND fact_key = ?`,
       [s.id, theme],
       `INSERT INTO questions (type, song_id, fact_key) VALUES ('theme', ?, ?)`,
@@ -51,7 +51,7 @@ for (const s of songs) {
     );
   }
   for (const collab of parseJsonArray(s.collaborators)) {
-    insertIfMissing(
+    await insertIfMissing(
       `type = 'collaborator' AND song_id = ? AND fact_key = ?`,
       [s.id, collab],
       `INSERT INTO questions (type, song_id, fact_key) VALUES ('collaborator', ?, ?)`,
@@ -60,8 +60,9 @@ for (const s of songs) {
   }
 }
 
-for (const fact of db.prepare('SELECT id FROM bio_facts').all()) {
-  insertIfMissing(
+const bioFacts = await db.prepare('SELECT id FROM bio_facts').all();
+for (const fact of bioFacts) {
+  await insertIfMissing(
     `type = 'bio' AND bio_fact_id = ?`,
     [fact.id],
     `INSERT INTO questions (type, bio_fact_id) VALUES ('bio', ?)`,
@@ -69,8 +70,9 @@ for (const fact of db.prepare('SELECT id FROM bio_facts').all()) {
   );
 }
 
-for (const egg of db.prepare(`SELECT id, song_id FROM easter_eggs WHERE quizzable = 1 AND term IS NOT NULL AND deleted = 0`).all()) {
-  insertIfMissing(
+const eggs = await db.prepare(`SELECT id, song_id FROM easter_eggs WHERE quizzable = 1 AND term IS NOT NULL AND deleted = 0`).all();
+for (const egg of eggs) {
+  await insertIfMissing(
     `type = 'reference' AND easter_egg_id = ?`,
     [egg.id],
     `INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`,

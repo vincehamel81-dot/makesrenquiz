@@ -92,7 +92,7 @@ async function scrapeLyricsPage(url) {
   return lines;
 }
 
-const songs = db.prepare('SELECT * FROM songs ORDER BY title').all();
+const songs = await db.prepare('SELECT * FROM songs ORDER BY title').all();
 const report = existsSync(REPORT_PATH) ? JSON.parse(readFileSync(REPORT_PATH, 'utf-8')) : {};
 const hasLyrics = db.prepare('SELECT 1 FROM lyrics_lines WHERE song_id = ? LIMIT 1');
 const insertLine = db.prepare('INSERT INTO lyrics_lines (song_id, line_no, text, is_header) VALUES (?, ?, ?, ?)');
@@ -101,7 +101,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let processed = 0;
 for (const song of songs) {
-  if (hasLyrics.get(song.id)) continue;
+  if (await hasLyrics.get(song.id)) continue;
   if (processed >= limit) break;
   processed++;
   console.log(`[${processed}/${Math.min(limit, songs.length)}] Matching: ${song.title}`);
@@ -133,7 +133,7 @@ for (const song of songs) {
       const isHeader =
         /^\[.*\]$/.test(text) ||
         /^(intro|outro|verse\s*\d*|chorus|pre-chorus|bridge|hook|refrain|interlude|breakdown|drop)s?:?\s*$/i.test(text);
-      insertLine.run(song.id, lineNo, text, isHeader ? 1 : 0);
+      await insertLine.run(song.id, lineNo, text, isHeader ? 1 : 0);
     }
 
     // Question candidates aren't picked here — run tools/selectLyricQuestions.js

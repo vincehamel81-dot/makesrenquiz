@@ -19,6 +19,7 @@
     "fetch:lyrics": "node tools/scrapeLyrics.js && node tools/selectLyricQuestions.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "react": "^19.2.8",

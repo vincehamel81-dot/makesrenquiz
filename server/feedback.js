@@ -18,17 +18,17 @@ function stepLadder(ladder, current, direction) {
 
 // Applies one of the 4 calibration actions to a question bank row.
 // Returns the updated row, or throws if the question doesn't exist.
-export function applyFeedback(questionId, action) {
-  const row = db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId);
+export async function applyFeedback(questionId, action) {
+  const row = await db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId);
   if (!row) throw new Error('question not found');
 
   if (action === 'not_relevant') {
-    db.prepare(`UPDATE questions SET status = 'retired' WHERE id = ?`).run(questionId);
+    await db.prepare(`UPDATE questions SET status = 'retired' WHERE id = ?`).run(questionId);
     return { ...row, status: 'retired' };
   }
 
   if (action === 'perfect') {
-    db.prepare(`UPDATE questions SET status = 'active' WHERE id = ?`).run(questionId);
+    await db.prepare(`UPDATE questions SET status = 'active' WHERE id = ?`).run(questionId);
     return { ...row, status: 'active' };
   }
 
@@ -38,19 +38,19 @@ export function applyFeedback(questionId, action) {
 
   if (row.type === 'audio') {
     const nextDuration = stepLadder(AUDIO_DURATION_LADDER, row.duration_sec, action === 'too_hard' ? 1 : -1);
-    db.prepare(`UPDATE questions SET status = 'active', duration_sec = ? WHERE id = ?`).run(nextDuration, questionId);
+    await db.prepare(`UPDATE questions SET status = 'active', duration_sec = ? WHERE id = ?`).run(nextDuration, questionId);
     return { ...row, status: 'active', duration_sec: nextDuration };
   }
 
   if (row.type === 'lyric') {
     const nextContext =
       action === 'too_hard' ? Math.min(row.context_lines + 1, LYRIC_MAX_CONTEXT) : Math.max(row.context_lines - 1, 1);
-    db.prepare(`UPDATE questions SET status = 'active', context_lines = ? WHERE id = ?`).run(nextContext, questionId);
+    await db.prepare(`UPDATE questions SET status = 'active', context_lines = ? WHERE id = ?`).run(nextContext, questionId);
     return { ...row, status: 'active', context_lines: nextContext };
   }
 
   // theme / follow-up / album / collaborator / bio: adjust how often it's asked
   const nextWeight = action === 'too_hard' ? Math.min(row.weight * 1.5, 5) : Math.max(row.weight * 0.5, 0.2);
-  db.prepare(`UPDATE questions SET status = 'active', weight = ? WHERE id = ?`).run(nextWeight, questionId);
+  await db.prepare(`UPDATE questions SET status = 'active', weight = ? WHERE id = ?`).run(nextWeight, questionId);
   return { ...row, status: 'active', weight: nextWeight };
 }

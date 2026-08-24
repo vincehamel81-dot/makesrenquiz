@@ -53,7 +53,7 @@ const lines = readFileSync(path.join(__dirname, 'ratings.csv'), 'utf-8')
 
 const rows = lines.slice(1).map(parseCsvLine); // skip header
 
-const songs = db.prepare('SELECT id, title FROM songs').all();
+const songs = await db.prepare('SELECT id, title FROM songs').all();
 const byNormalized = new Map(songs.map((s) => [normalize(s.title), s]));
 
 const USER_ID = 1; // vince — see server/auth.js
@@ -73,7 +73,7 @@ for (const [titleRaw, ratingRaw] of rows) {
     unmatched.push(title);
     continue;
   }
-  updateRating.run(USER_ID, song.id, rating);
+  await updateRating.run(USER_ID, song.id, rating);
   matched++;
 }
 
@@ -83,7 +83,7 @@ if (unmatched.length) {
   for (const t of unmatched) console.log(`  - "${t}"`);
 }
 
-const unrated = db
+const unrated = await db
   .prepare(
     `SELECT title FROM songs s WHERE NOT EXISTS (
        SELECT 1 FROM user_song_ratings r WHERE r.song_id = s.id AND r.user_id = ? AND r.rating != 0
