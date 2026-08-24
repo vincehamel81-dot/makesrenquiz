@@ -15,7 +15,7 @@ function csvEscape(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-const rows = db
+const rows = await db
   .prepare(
     `SELECT s.title, a.name as album, s.release_date as song_release_date,
             a.release_date as album_release_date, s.collaborators, s.youtube_url

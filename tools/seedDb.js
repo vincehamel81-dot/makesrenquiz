@@ -7,12 +7,12 @@ import { db } from '../server/db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function upsertAlbum(name, releaseDate) {
+async function upsertAlbum(name, releaseDate) {
   if (!name) return null;
-  db.prepare(
+  await db.prepare(
     'INSERT INTO albums (name, release_date) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET release_date = excluded.release_date'
   ).run(name, releaseDate ?? null);
-  return db.prepare('SELECT id FROM albums WHERE name = ?').get(name).id;
+  return (await db.prepare('SELECT id FROM albums WHERE name = ?').get(name)).id;
 }
 
 const songs = JSON.parse(readFileSync(path.join(__dirname, 'songs.seed.json'), 'utf-8'));
@@ -32,8 +32,8 @@ const upsertSong = db.prepare(`
 `);
 
 for (const s of songs) {
-  const album_id = upsertAlbum(s.album, s.release_date);
-  upsertSong.run({
+  const album_id = await upsertAlbum(s.album, s.release_date);
+  await upsertSong.run({
     title: s.title,
     slug: s.slug,
     album_id,
@@ -49,7 +49,7 @@ for (const s of songs) {
 // second pass: follow_up_to references another song by slug
 const setFollowUp = db.prepare('UPDATE songs SET follow_up_to_id = (SELECT id FROM songs WHERE slug = ?) WHERE slug = ?');
 for (const s of songs) {
-  if (s.follow_up_to) setFollowUp.run(s.follow_up_to, s.slug);
+  if (s.follow_up_to) await setFollowUp.run(s.follow_up_to, s.slug);
 }
 
 console.log(`Seeded ${songs.length} songs.`);
@@ -58,11 +58,12 @@ const bioPath = path.join(__dirname, 'bio_facts.seed.json');
 if (existsSync(bioPath)) {
   const facts = JSON.parse(readFileSync(bioPath, 'utf-8'));
   // avoid dupes by question text since there's no unique constraint
-  const existingQs = new Set(db.prepare('SELECT question FROM bio_facts').all().map((r) => r.question));
+  const existingRows = await db.prepare('SELECT question FROM bio_facts').all();
+  const existingQs = new Set(existingRows.map((r) => r.question));
   let added = 0;
   for (const f of facts) {
     if (!existingQs.has(f.question)) {
-      db.prepare('INSERT INTO bio_facts (question, answer, options) VALUES (?, ?, ?)').run(
+      await db.prepare('INSERT INTO bio_facts (question, answer, options) VALUES (?, ?, ?)').run(
         f.question,
         f.answer,
         f.options ? JSON.stringify(f.options) : null
@@ -77,9 +78,8 @@ const eggsPath = path.join(__dirname, 'easter_eggs.seed.json');
 if (existsSync(eggsPath)) {
   // { song: "<title>", term, description, confidence, quizzable, source_url }
   const eggs = JSON.parse(readFileSync(eggsPath, 'utf-8'));
-  const existingEggs = new Set(
-    db.prepare('SELECT song_id, description FROM easter_eggs').all().map((r) => `${r.song_id}::${r.description}`)
-  );
+  const existingEggRows = await db.prepare('SELECT song_id, description FROM easter_eggs').all();
+  const existingEggs = new Set(existingEggRows.map((r) => `${r.song_id}::${r.description}`));
   const findSongId = db.prepare('SELECT id FROM songs WHERE title = ?');
   const insertEgg = db.prepare(`
     INSERT INTO easter_eggs (song_id, term, description, confidence, quizzable, source_url)
@@ -87,14 +87,14 @@ if (existsSync(eggsPath)) {
   `);
   let added = 0;
   for (const e of eggs) {
-    const song = findSongId.get(e.song);
+    const song = await findSongId.get(e.song);
     if (!song) {
       console.warn(`easter_eggs.seed.json: no song titled "${e.song}" — skipping "${e.term ?? e.description}"`);
       continue;
     }
     const key = `${song.id}::${e.description}`;
     if (existingEggs.has(key)) continue;
-    insertEgg.run(song.id, e.term ?? null, e.description, e.confidence ?? 'theory', e.quizzable ? 1 : 0, e.source_url ?? null);
+    await insertEgg.run(song.id, e.term ?? null, e.description, e.confidence ?? 'theory', e.quizzable ? 1 : 0, e.source_url ?? null);
     added++;
   }
   console.log(`Seeded ${added} new easter eggs.`);

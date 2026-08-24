@@ -101,7 +101,7 @@ if (!existsSync(CHANNEL_CACHE_PATH)) {
 }
 const channelIndex = JSON.parse(readFileSync(CHANNEL_CACHE_PATH, 'utf-8'));
 
-const songs = db.prepare('SELECT id, title, slug, youtube_url FROM songs WHERE youtube_url IS NULL ORDER BY title').all();
+const songs = await db.prepare('SELECT id, title, slug, youtube_url FROM songs WHERE youtube_url IS NULL ORDER BY title').all();
 const updateUrl = db.prepare('UPDATE songs SET youtube_url = ? WHERE id = ?');
 
 let filled = 0;
@@ -111,7 +111,7 @@ for (const song of songs) {
   const hasLocalAudio = existsSync(path.join(RAW_DIR, `${song.slug}.mp3`));
   if (confident) {
     const url = `https://www.youtube.com/watch?v=${best.id}`;
-    updateUrl.run(url, song.id);
+    await updateUrl.run(url, song.id);
     filled++;
     console.log(`${hasLocalAudio ? '[verified]' : '[new match]'} ${song.title} -> ${best.title}`);
   } else {

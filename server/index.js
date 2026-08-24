@@ -1,9 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { db } from './db.js';
+import { db, withTransaction } from './db.js';
 import { generateSession, buildChoices, markAsked, randomTriviaForSong } from './questionTypes.js';
 import { applyFeedback } from './feedback.js';
 import { rebuildLyricQuestions } from './lyricQuestions.js';
@@ -18,21 +17,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json());
-// AUDIO_DIR lets a host with a persistent disk (e.g. Render) serve clips
-// from a mounted volume instead of the local repo checkout; unset in dev
-// and by the local fetch/slice pipeline (tools/fetchAudio.js), which always
-// writes to public/audio regardless of where this serves from.
-app.use('/audio', express.static(process.env.AUDIO_DIR || path.join(__dirname, '..', 'public', 'audio')));
+app.use('/audio', express.static(path.join(__dirname, '..', 'public', 'audio')));
 
 // Song titles for autocomplete, or (with ?stats=1) the enriched list for the
 // browsable Songs page: lyric/clip/easter-egg counts so you can see at a
 // glance what's still missing.
-app.get('/api/songs', (req, res) => {
+app.get('/api/songs', async (req, res) => {
   if (!req.query.stats) {
-    return res.json(db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all());
+    return res.json(await db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all());
   }
   const userId = currentUserId(req);
-  const songs = db
+  const songs = await db
     .prepare(
       `SELECT s.id, s.title, s.slug, s.youtube_url, a.name as album_name, a.release_date as album_release_date,
               COALESCE((SELECT rating FROM user_song_ratings r WHERE r.song_id = s.id AND r.user_id = ?), 0) as rating,
@@ -58,20 +53,20 @@ function slugify(title) {
 // Add a new song. Auto-checked for the creator, since adding it here means
 // you want to be quizzed on it — though it won't produce any audio/lyric
 // questions until the data pipeline (tools/) processes it.
-app.post('/api/songs', (req, res) => {
+app.post('/api/songs', async (req, res) => {
   const title = (req.body.title || '').trim();
   if (!title) return res.status(400).json({ error: 'title required' });
   const slug = slugify(title);
   if (!slug) return res.status(400).json({ error: 'could not derive a slug from title' });
-  if (db.prepare('SELECT 1 FROM songs WHERE slug = ?').get(slug)) {
+  if (await db.prepare('SELECT 1 FROM songs WHERE slug = ?').get(slug)) {
     return res.status(409).json({ error: 'a song with this title (or a very similar one) already exists' });
   }
 
   let album_id = null;
   const albumName = (req.body.album || '').trim();
   if (albumName) {
-    db.prepare('INSERT INTO albums (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(albumName);
-    album_id = db.prepare('SELECT id FROM albums WHERE name = ?').get(albumName).id;
+    await db.prepare('INSERT INTO albums (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(albumName);
+    album_id = (await db.prepare('SELECT id FROM albums WHERE name = ?').get(albumName)).id;
   }
   const collaborators = Array.isArray(req.body.collaborators)
     ? req.body.collaborators.map((c) => c.trim()).filter(Boolean)
@@ -79,12 +74,12 @@ app.post('/api/songs', (req, res) => {
   const youtube_url = (req.body.youtube_url || '').trim() || null;
 
   try {
-    const info = db
+    const info = await db
       .prepare(
         `INSERT INTO songs (title, slug, album_id, collaborators, themes, youtube_url) VALUES (?, ?, ?, ?, '[]', ?)`
       )
       .run(title, slug, album_id, JSON.stringify(collaborators), youtube_url);
-    db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
+    await db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
       currentUserId(req),
       info.lastInsertRowid
     );
@@ -96,24 +91,21 @@ app.post('/api/songs', (req, res) => {
 
 // Which songs the current user has checked off as "known" / wants quizzed on.
 // An empty list is the signal the Quiz page uses to show the onboarding gate.
-app.get('/api/user-songs', (req, res) => {
-  const songIds = db
-    .prepare('SELECT song_id FROM user_songs WHERE user_id = ?')
-    .all(currentUserId(req))
-    .map((r) => r.song_id);
-  res.json({ song_ids: songIds });
+app.get('/api/user-songs', async (req, res) => {
+  const rows = await db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(currentUserId(req));
+  res.json({ song_ids: rows.map((r) => r.song_id) });
 });
 
-app.put('/api/user-songs/:songId', (req, res) => {
-  db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
+app.put('/api/user-songs/:songId', async (req, res) => {
+  await db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
     currentUserId(req),
     Number(req.params.songId)
   );
   res.json({ ok: true });
 });
 
-app.delete('/api/user-songs/:songId', (req, res) => {
-  db.prepare('DELETE FROM user_songs WHERE user_id = ? AND song_id = ?').run(
+app.delete('/api/user-songs/:songId', async (req, res) => {
+  await db.prepare('DELETE FROM user_songs WHERE user_id = ? AND song_id = ?').run(
     currentUserId(req),
     Number(req.params.songId)
   );
@@ -124,14 +116,14 @@ const DEFAULT_PREFERENCES = { audio_pct: 60, lyric_pct: 38, trivia_pct: 2 };
 
 // Your audio/lyric/trivia quiz mix. No saved row yet just means "use the
 // defaults" — same pattern as ratings, nothing is written until you save.
-app.get('/api/preferences', (req, res) => {
-  const prefs = db
+app.get('/api/preferences', async (req, res) => {
+  const prefs = await db
     .prepare('SELECT audio_pct, lyric_pct, trivia_pct FROM user_preferences WHERE user_id = ?')
     .get(currentUserId(req));
   res.json(prefs ?? DEFAULT_PREFERENCES);
 });
 
-app.put('/api/preferences', (req, res) => {
+app.put('/api/preferences', async (req, res) => {
   const audio_pct = Number(req.body.audio_pct);
   const lyric_pct = Number(req.body.lyric_pct);
   const trivia_pct = Number(req.body.trivia_pct);
@@ -141,7 +133,7 @@ app.put('/api/preferences', (req, res) => {
   if (audio_pct + lyric_pct + trivia_pct !== 100) {
     return res.status(400).json({ error: 'audio_pct + lyric_pct + trivia_pct must sum to 100' });
   }
-  db.prepare(
+  await db.prepare(
     `INSERT INTO user_preferences (user_id, audio_pct, lyric_pct, trivia_pct) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET audio_pct = excluded.audio_pct, lyric_pct = excluded.lyric_pct, trivia_pct = excluded.trivia_pct`
   ).run(currentUserId(req), audio_pct, lyric_pct, trivia_pct);
@@ -153,32 +145,32 @@ app.put('/api/preferences', (req, res) => {
 // Also opens a quiz_sessions row, snapshotting how many songs were checked
 // at the time — History groups by this, and the Leaderboard uses it to
 // weight completed sessions.
-app.get('/api/quiz/questions', (req, res) => {
+app.get('/api/quiz/questions', async (req, res) => {
   const count = Math.min(Number(req.query.count) || SESSION_LENGTH, 100);
   const userId = currentUserId(req);
-  const activeSongCount = db.prepare('SELECT COUNT(*) as n FROM user_songs WHERE user_id = ?').get(userId).n;
-  const { lastInsertRowid: sessionId } = db
+  const activeSongCount = (await db.prepare('SELECT COUNT(*) as n FROM user_songs WHERE user_id = ?').get(userId)).n;
+  const { lastInsertRowid: sessionId } = await db
     .prepare('INSERT INTO quiz_sessions (user_id, requested_count, active_song_count) VALUES (?, ?, ?)')
     .run(userId, count, activeSongCount);
-  res.json({ session_id: sessionId, questions: generateSession(count, userId) });
+  res.json({ session_id: sessionId, questions: await generateSession(count, userId) });
 });
 
 // Multiple-choice reveal for a given question
-app.post('/api/quiz/choices', (req, res) => {
+app.post('/api/quiz/choices', async (req, res) => {
   const { type, correct_answer, question_id } = req.body;
   if (!type || !correct_answer) return res.status(400).json({ error: 'type and correct_answer required' });
   try {
-    res.json(buildChoices(type, correct_answer, question_id, currentUserId(req)));
+    res.json(await buildChoices(type, correct_answer, question_id, currentUserId(req)));
   } catch {
     res.status(400).json({ error: 'unknown question type' });
   }
 });
 
 // Record an attempt
-app.post('/api/attempts', (req, res) => {
+app.post('/api/attempts', async (req, res) => {
   const { question_type, question_id, song_id, session_id, prompt, correct_answer, user_answer, mode, was_correct, points } =
     req.body;
-  db.prepare(
+  await db.prepare(
     `INSERT INTO quiz_attempts (user_id, session_id, question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
@@ -194,15 +186,15 @@ app.post('/api/attempts', (req, res) => {
     was_correct ? 1 : 0,
     points
   );
-  if (question_id) markAsked(question_id, was_correct);
+  if (question_id) await markAsked(question_id, was_correct);
   res.status(201).json({ ok: true });
 });
 
 // Calibration feedback on a bank question: perfect | too_hard | too_easy | not_relevant
-app.post('/api/questions/:id/feedback', (req, res) => {
+app.post('/api/questions/:id/feedback', async (req, res) => {
   const { action } = req.body;
   try {
-    res.json(applyFeedback(Number(req.params.id), action));
+    res.json(await applyFeedback(Number(req.params.id), action));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -212,11 +204,11 @@ app.post('/api/questions/:id/feedback', (req, res) => {
 // `count` is the total number of lines wanted from the start of the
 // question's bundle, not an increment, so the client can just re-request a
 // bigger number each time rather than tracking an offset.
-app.get('/api/questions/:id/lyric-lines', (req, res) => {
-  const q = db.prepare(`SELECT song_id, start_line_no FROM questions WHERE id = ? AND type = 'lyric'`).get(req.params.id);
+app.get('/api/questions/:id/lyric-lines', async (req, res) => {
+  const q = await db.prepare(`SELECT song_id, start_line_no FROM questions WHERE id = ? AND type = 'lyric'`).get(req.params.id);
   if (!q) return res.status(404).json({ error: 'not found' });
   const count = Math.min(Math.max(Number(req.query.count) || 2, 1), 12);
-  const lines = db
+  const lines = await db
     .prepare(
       `SELECT text FROM lyrics_lines WHERE song_id = ? AND line_no >= ? AND is_header = 0 ORDER BY line_no LIMIT ?`
     )
@@ -228,12 +220,12 @@ app.get('/api/questions/:id/lyric-lines', (req, res) => {
 // as Song Knowledge — a correct 4-choice guess counts as 0.5 here too, so
 // the accuracy trend reflects actually knowing things, not luck.
 const CORRECT_WEIGHTED = `SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END)`;
-app.get('/api/history', (req, res) => {
+app.get('/api/history', async (req, res) => {
   const userId = currentUserId(req);
   // active_song_count comes from the session an attempt belongs to; attempts
   // from before session tracking existed (session_id NULL) group together
   // under a null count rather than being dropped.
-  const daily = db
+  const daily = await db
     .prepare(
       `SELECT date(a.played_at) as day, s.active_song_count as active_song_count,
               SUM(a.points) as points, COUNT(*) as attempts, ${CORRECT_WEIGHTED} as correct
@@ -241,7 +233,7 @@ app.get('/api/history', (req, res) => {
        WHERE a.user_id = ? GROUP BY day, active_song_count ORDER BY day`
     )
     .all(userId);
-  const byType = db
+  const byType = await db
     .prepare(
       `SELECT question_type, COUNT(*) as attempts, ${CORRECT_WEIGHTED} as correct, SUM(points) as points
        FROM quiz_attempts WHERE user_id = ? GROUP BY question_type`
@@ -251,27 +243,27 @@ app.get('/api/history', (req, res) => {
 });
 
 // A "did you know" trivia snippet for a song, shown after answering
-app.get('/api/songs/:id/trivia', (req, res) => {
-  res.json(randomTriviaForSong(Number(req.params.id)));
+app.get('/api/songs/:id/trivia', async (req, res) => {
+  res.json(await randomTriviaForSong(Number(req.params.id)));
 });
 
 // Full song detail: lyrics + easter eggs, for the browsable song list
-app.get('/api/songs/:slug/detail', (req, res) => {
-  const song = db
+app.get('/api/songs/:slug/detail', async (req, res) => {
+  const song = await db
     .prepare(
       `SELECT s.*, a.name as album_name FROM songs s LEFT JOIN albums a ON a.id = s.album_id WHERE s.slug = ?`
     )
     .get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
-  const ratingRow = db
+  const ratingRow = await db
     .prepare('SELECT rating FROM user_song_ratings WHERE song_id = ? AND user_id = ?')
     .get(song.id, currentUserId(req));
   song.rating = ratingRow?.rating ?? 0;
-  const lyrics = db.prepare('SELECT line_no, text, is_header FROM lyrics_lines WHERE song_id = ? ORDER BY line_no').all(song.id);
-  const easterEggs = db
+  const lyrics = await db.prepare('SELECT line_no, text, is_header FROM lyrics_lines WHERE song_id = ? ORDER BY line_no').all(song.id);
+  const easterEggs = await db
     .prepare('SELECT id, term, description, confidence, source_url FROM easter_eggs WHERE song_id = ? AND deleted = 0 ORDER BY id')
     .all(song.id);
-  const clips = db
+  const clips = await db
     .prepare(
       `SELECT id, start_sec, duration_sec, file_path FROM questions
        WHERE song_id = ? AND type = 'audio' AND status != 'retired' ORDER BY start_sec`
@@ -290,8 +282,8 @@ app.get('/api/songs/:slug/detail', (req, res) => {
 // Manual lyrics editor — for spoken-word/non-song entries or filling gaps
 // the scraper couldn't find. Replaces the song's lines and rebuilds its
 // slice of the lyric question pool.
-app.put('/api/songs/:slug/lyrics', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.put('/api/songs/:slug/lyrics', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const { text } = req.body;
   if (typeof text !== 'string') return res.status(400).json({ error: 'text (string) required' });
@@ -301,7 +293,7 @@ app.put('/api/songs/:slug/lyrics', (req, res) => {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  db.prepare('DELETE FROM lyrics_lines WHERE song_id = ?').run(song.id);
+  await db.prepare('DELETE FROM lyrics_lines WHERE song_id = ?').run(song.id);
   const insertLine = db.prepare('INSERT INTO lyrics_lines (song_id, line_no, text, is_header) VALUES (?, ?, ?, ?)');
   let lineNo = 0;
   for (const line of lines) {
@@ -309,36 +301,36 @@ app.put('/api/songs/:slug/lyrics', (req, res) => {
     const isHeader =
       /^\[.*\]$/.test(line) ||
       /^(intro|outro|verse\s*\d*|chorus|pre-chorus|bridge|hook|refrain|interlude|breakdown|drop)s?:?\s*$/i.test(line);
-    insertLine.run(song.id, lineNo, line, isHeader ? 1 : 0);
+    await insertLine.run(song.id, lineNo, line, isHeader ? 1 : 0);
   }
 
-  const summary = rebuildLyricQuestions();
+  const summary = await rebuildLyricQuestions();
   res.json({ lineCount: lines.length, ...summary });
 });
 
 // Soft-delete an easter egg you don't find useful. Any quiz question built
 // from it is retired (not deleted, in case it has attempt history).
-app.delete('/api/easter-eggs/:id', (req, res) => {
+app.delete('/api/easter-eggs/:id', async (req, res) => {
   const id = Number(req.params.id);
-  db.prepare('UPDATE easter_eggs SET deleted = 1 WHERE id = ?').run(id);
-  db.prepare(`UPDATE questions SET status = 'retired' WHERE type = 'reference' AND easter_egg_id = ?`).run(id);
+  await db.prepare('UPDATE easter_eggs SET deleted = 1 WHERE id = ?').run(id);
+  await db.prepare(`UPDATE questions SET status = 'retired' WHERE type = 'reference' AND easter_egg_id = ?`).run(id);
   res.json({ ok: true });
 });
 
 // Manually add an easter egg from the song page.
-app.post('/api/songs/:slug/easter-eggs', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.post('/api/songs/:slug/easter-eggs', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const { term, description, confidence, quizzable, source_url } = req.body;
   if (!description) return res.status(400).json({ error: 'description required' });
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO easter_eggs (song_id, term, description, confidence, quizzable, source_url)
        VALUES (?, ?, ?, ?, ?, ?)`
     )
     .run(song.id, term || null, description, confidence === 'confirmed' ? 'confirmed' : 'theory', quizzable ? 1 : 0, source_url || null);
   if (quizzable && term) {
-    db.prepare(`INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`).run(song.id, info.lastInsertRowid);
+    await db.prepare(`INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`).run(song.id, info.lastInsertRowid);
   }
   res.status(201).json({ id: info.lastInsertRowid });
 });
@@ -346,8 +338,8 @@ app.post('/api/songs/:slug/easter-eggs', (req, res) => {
 // Retire a single quiz question (e.g. one bad audio clip) without touching
 // the rest of the song's data. Soft-delete, consistent with the calibration
 // feedback's "not relevant" action.
-app.delete('/api/questions/:id', (req, res) => {
-  db.prepare(`UPDATE questions SET status = 'retired' WHERE id = ?`).run(Number(req.params.id));
+app.delete('/api/questions/:id', async (req, res) => {
+  await db.prepare(`UPDATE questions SET status = 'retired' WHERE id = ?`).run(Number(req.params.id));
   res.json({ ok: true });
 });
 
@@ -356,54 +348,53 @@ app.delete('/api/questions/:id', (req, res) => {
 // preserved but detached (song_id set null) rather than deleted, so your
 // score history stays intact. Other songs' follow_up_to pointing at this one
 // are cleared too.
-app.delete('/api/songs/:slug', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.delete('/api/songs/:slug', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const id = song.id;
-  db.exec('BEGIN');
   try {
-    db.prepare('UPDATE quiz_attempts SET song_id = NULL WHERE song_id = ?').run(id);
-    db.prepare(
-      `UPDATE quiz_attempts SET question_id = NULL WHERE question_id IN (SELECT id FROM questions WHERE song_id = ?)`
-    ).run(id);
-    db.prepare('UPDATE songs SET follow_up_to_id = NULL WHERE follow_up_to_id = ?').run(id);
-    db.prepare(
-      `DELETE FROM questions WHERE easter_egg_id IN (SELECT id FROM easter_eggs WHERE song_id = ?)`
-    ).run(id);
-    db.prepare('DELETE FROM easter_eggs WHERE song_id = ?').run(id);
-    db.prepare('DELETE FROM user_song_ratings WHERE song_id = ?').run(id);
-    db.prepare('DELETE FROM user_songs WHERE song_id = ?').run(id);
-    db.prepare('DELETE FROM questions WHERE song_id = ?').run(id);
-    db.prepare('DELETE FROM lyrics_lines WHERE song_id = ?').run(id);
-    db.prepare('DELETE FROM songs WHERE id = ?').run(id);
-    db.exec('COMMIT');
+    await withTransaction(async (tdb) => {
+      await tdb.prepare('UPDATE quiz_attempts SET song_id = NULL WHERE song_id = ?').run(id);
+      await tdb.prepare(
+        `UPDATE quiz_attempts SET question_id = NULL WHERE question_id IN (SELECT id FROM questions WHERE song_id = ?)`
+      ).run(id);
+      await tdb.prepare('UPDATE songs SET follow_up_to_id = NULL WHERE follow_up_to_id = ?').run(id);
+      await tdb.prepare(
+        `DELETE FROM questions WHERE easter_egg_id IN (SELECT id FROM easter_eggs WHERE song_id = ?)`
+      ).run(id);
+      await tdb.prepare('DELETE FROM easter_eggs WHERE song_id = ?').run(id);
+      await tdb.prepare('DELETE FROM user_song_ratings WHERE song_id = ?').run(id);
+      await tdb.prepare('DELETE FROM user_songs WHERE song_id = ?').run(id);
+      await tdb.prepare('DELETE FROM questions WHERE song_id = ?').run(id);
+      await tdb.prepare('DELETE FROM lyrics_lines WHERE song_id = ?').run(id);
+      await tdb.prepare('DELETE FROM songs WHERE id = ?').run(id);
+    });
   } catch (err) {
-    db.exec('ROLLBACK');
     return res.status(500).json({ error: err.message });
   }
   res.json({ ok: true });
 });
 
 // Set your own personal preference rating (0-1000) for a song.
-app.put('/api/songs/:slug/rating', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.put('/api/songs/:slug/rating', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const rating = Number(req.body.rating);
   if (!Number.isFinite(rating)) return res.status(400).json({ error: 'rating (number) required' });
-  db.prepare(
+  await db.prepare(
     `INSERT INTO user_song_ratings (user_id, song_id, rating) VALUES (?, ?, ?)
      ON CONFLICT(user_id, song_id) DO UPDATE SET rating = excluded.rating`
   ).run(currentUserId(req), song.id, rating);
   res.json({ ok: true, rating });
 });
 
-app.put('/api/songs/:slug/title', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.put('/api/songs/:slug/title', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const title = (req.body.title || '').trim();
   if (!title) return res.status(400).json({ error: 'title required' });
   try {
-    db.prepare('UPDATE songs SET title = ? WHERE id = ?').run(title, song.id);
+    await db.prepare('UPDATE songs SET title = ? WHERE id = ?').run(title, song.id);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -413,25 +404,25 @@ app.put('/api/songs/:slug/title', (req, res) => {
 // Assign (or create) the album a song belongs to. Lets a new collab album
 // like "Busking Sessions (The Big Push)" be created just by typing its name
 // on any of its songs, same as how titles get renamed one at a time.
-app.put('/api/songs/:slug/album', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.put('/api/songs/:slug/album', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const name = (req.body.album || '').trim();
   if (!name) {
-    db.prepare('UPDATE songs SET album_id = NULL WHERE id = ?').run(song.id);
+    await db.prepare('UPDATE songs SET album_id = NULL WHERE id = ?').run(song.id);
     return res.json({ ok: true, album: null });
   }
-  db.prepare('INSERT INTO albums (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(name);
-  const album = db.prepare('SELECT id FROM albums WHERE name = ?').get(name);
-  db.prepare('UPDATE songs SET album_id = ? WHERE id = ?').run(album.id, song.id);
+  await db.prepare('INSERT INTO albums (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(name);
+  const album = await db.prepare('SELECT id FROM albums WHERE name = ?').get(name);
+  await db.prepare('UPDATE songs SET album_id = ? WHERE id = ?').run(album.id, song.id);
   res.json({ ok: true, album: name });
 });
 
-app.put('/api/songs/:slug/youtube-url', (req, res) => {
-  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+app.put('/api/songs/:slug/youtube-url', async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const url = (req.body.youtube_url || '').trim() || null;
-  db.prepare('UPDATE songs SET youtube_url = ? WHERE id = ?').run(url, song.id);
+  await db.prepare('UPDATE songs SET youtube_url = ? WHERE id = ?').run(url, song.id);
   res.json({ ok: true, youtube_url: url });
 });
 
@@ -439,10 +430,10 @@ app.put('/api/songs/:slug/youtube-url', (req, res) => {
 // "trainer"). SQLite LIKE has no word-boundary concept, so we pre-filter
 // broadly with LIKE (cheap, uses the text index) then apply a real regex
 // boundary check in JS.
-app.get('/api/lookup', (req, res) => {
+app.get('/api/lookup', async (req, res) => {
   const word = (req.query.word || '').trim();
   if (!word) return res.json([]);
-  const candidates = db
+  const candidates = await db
     .prepare(
       `SELECT s.title, s.slug, ll.line_no, ll.text FROM lyrics_lines ll
        JOIN songs s ON s.id = ll.song_id
@@ -459,9 +450,9 @@ app.get('/api/lookup', (req, res) => {
 // from the 4-choice fallback counts as half credit here — it reflects
 // recognition/hesitation, not the same confident recall as a free-typed
 // answer, even though the fraction itself isn't a literal accuracy %.
-app.get('/api/stats/songs', (req, res) => {
+app.get('/api/stats/songs', async (req, res) => {
   const userId = currentUserId(req);
-  const rows = db
+  const rows = await db
     .prepare(
       `SELECT song_id, question_type, COUNT(*) as attempts,
               SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END) as correct
@@ -484,13 +475,11 @@ app.get('/api/stats/songs', (req, res) => {
     bucket.total += r.attempts;
   }
 
-  const ratings = new Map(
-    db.prepare('SELECT song_id, rating FROM user_song_ratings WHERE user_id = ?').all(userId).map((r) => [r.song_id, r.rating])
-  );
-  const knownIds = new Set(
-    db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(userId).map((r) => r.song_id)
-  );
-  const songs = db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all();
+  const ratingRows = await db.prepare('SELECT song_id, rating FROM user_song_ratings WHERE user_id = ?').all(userId);
+  const ratings = new Map(ratingRows.map((r) => [r.song_id, r.rating]));
+  const knownRows = await db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(userId);
+  const knownIds = new Set(knownRows.map((r) => r.song_id));
+  const songs = await db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all();
   res.json(
     songs.map((s) => ({
       title: s.title,
@@ -513,8 +502,8 @@ app.get('/api/stats/songs', (req, res) => {
 // user's own History, just not here). Points themselves already carry the
 // per-type constants (see QuizPage.jsx's TYPE_POINTS), so this is just
 // scaling a completed session's total by how large a pool it was drawn from.
-app.get('/api/leaderboard', (_req, res) => {
-  const rows = db
+app.get('/api/leaderboard', async (_req, res) => {
+  const rows = await db
     .prepare(
       `SELECT s.user_id as user_id, u.name as name, s.id as session_id, s.active_song_count as active_song_count,
               SUM(a.points) as session_points, COUNT(a.id) as answered
@@ -539,17 +528,13 @@ app.get('/api/leaderboard', (_req, res) => {
   res.json([...best.values()].sort((a, b) => b.score - a.score));
 });
 
-// Serve the built frontend when it exists (production hosts like Render run
-// this as the only process, with no separate Vite dev server to fall back
-// on). In local dev this is a no-op — the browser talks to Vite's dev
-// server instead, which proxies only /api and /audio here (vite.config.js).
-const distDir = path.join(__dirname, '..', 'dist');
-if (existsSync(distDir)) {
-  app.use(express.static(distDir));
-  // Plain middleware, not a '*' route pattern — Express 5's path-to-regexp
-  // no longer accepts a bare '*' (needs a named wildcard like '/*splat').
-  app.use((req, res) => res.sendFile(path.join(distDir, 'index.html')));
+// Vercel's runtime invokes the exported app directly per-request rather
+// than through a bound port, so skip listening there (process.env.VERCEL
+// is set automatically in that environment) — local dev and any other
+// host that just runs this file directly still get a real listening server.
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => console.log(`renquiz API listening on http://localhost:${PORT}`));
 }
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`renquiz API listening on http://localhost:${PORT}`));
+export default app;

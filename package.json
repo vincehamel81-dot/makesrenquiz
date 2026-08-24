@@ -7,18 +7,20 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"node --watch server/index.js\"",
+    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"node --env-file-if-exists=.env --watch server/index.js\"",
     "dev:client": "vite",
-    "dev:server": "node --watch server/index.js",
+    "dev:server": "node --env-file-if-exists=.env --watch server/index.js",
     "build": "vite build",
-    "start": "node server/index.js",
+    "start": "node --env-file-if-exists=.env server/index.js",
     "lint": "oxlint",
     "preview": "vite preview",
-    "seed:songs": "node tools/parseSongs.js && node tools/seedDb.js && node tools/syncFactQuestions.js",
-    "fetch:audio": "node tools/fetchAudio.js",
-    "fetch:lyrics": "node tools/scrapeLyrics.js && node tools/selectLyricQuestions.js"
+    "seed:songs": "node --env-file-if-exists=.env tools/parseSongs.js && node --env-file-if-exists=.env tools/seedDb.js && node --env-file-if-exists=.env tools/syncFactQuestions.js",
+    "fetch:audio": "node --env-file-if-exists=.env tools/fetchAudio.js",
+    "fetch:lyrics": "node --env-file-if-exists=.env tools/scrapeLyrics.js && node --env-file-if-exists=.env tools/selectLyricQuestions.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@vercel/blob": "^2.8.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "react": "^19.2.8",

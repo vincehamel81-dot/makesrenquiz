@@ -64,13 +64,12 @@ function chooseBundle(lineMap, lineNo) {
   return [lineNo, 1];
 }
 
-export function rebuildLyricQuestions() {
-  const allRows = db.prepare('SELECT song_id, line_no, text, is_header FROM lyrics_lines ORDER BY song_id, line_no').all();
+export async function rebuildLyricQuestions() {
+  const allRows = await db.prepare('SELECT song_id, line_no, text, is_header FROM lyrics_lines ORDER BY song_id, line_no').all();
   const nonHeaderLines = allRows.filter((l) => !l.is_header);
 
-  const titleById = new Map(
-    db.prepare('SELECT id, title FROM songs').all().map((s) => [s.id, expandAbbrev(normalize(s.title))])
-  );
+  const songRows = await db.prepare('SELECT id, title FROM songs').all();
+  const titleById = new Map(songRows.map((s) => [s.id, expandAbbrev(normalize(s.title))]));
   function nameDropsOwnTitle(text, songId) {
     const title = titleById.get(songId);
     return title && expandAbbrev(normalize(text)).includes(title);
@@ -149,7 +148,7 @@ export function rebuildLyricQuestions() {
 
   // Retire (not delete) existing lyric questions — some may already have
   // quiz_attempts history referencing them via foreign key.
-  db.exec(`UPDATE questions SET status = 'retired' WHERE type = 'lyric'`);
+  await db.exec(`UPDATE questions SET status = 'retired' WHERE type = 'lyric'`);
   const insertLyricQuestion = db.prepare(
     `INSERT INTO questions (type, song_id, start_line_no, context_lines, status) VALUES ('lyric', ?, ?, ?, 'pending')`
   );
@@ -176,7 +175,7 @@ export function rebuildLyricQuestions() {
     const step = Math.max(1, Math.floor(qualifying.length / LYRIC_QUESTIONS_PER_SONG));
     let added = 0;
     for (let i = 0; i < qualifying.length && added < LYRIC_QUESTIONS_PER_SONG; i += step) {
-      insertLyricQuestion.run(songId, qualifying[i].startLineNo, qualifying[i].contextLines);
+      await insertLyricQuestion.run(songId, qualifying[i].startLineNo, qualifying[i].contextLines);
       added++;
     }
     totalAdded += added;

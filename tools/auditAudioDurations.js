@@ -43,7 +43,7 @@ function remoteDuration(url) {
   }
 }
 
-const songs = db.prepare('SELECT id, slug, title, youtube_url FROM songs WHERE youtube_url IS NOT NULL ORDER BY title').all();
+const songs = await db.prepare('SELECT id, slug, title, youtube_url FROM songs WHERE youtube_url IS NOT NULL ORDER BY title').all();
 const mismatches = [];
 let checked = 0;
 let errors = 0;
