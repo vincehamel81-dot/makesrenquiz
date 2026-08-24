@@ -74,6 +74,17 @@ export async function withTransaction(fn) {
   }
 }
 
+// For a bulk write that's many statements but no branching logic between
+// them (the rating-rank bulk upsert in server/index.js) — one network
+// round-trip instead of N sequential awaited ones, still atomic. Each
+// statement is {sql, args}; args as a plain array (positional `?`s).
+export async function batchWrite(statements) {
+  await client.batch(
+    statements.map((s) => ({ sql: s.sql, args: s.args })),
+    'write'
+  );
+}
+
 // Top-level await — every file just does `import { db } from './db.js'`
 // exactly like before; Node defers their module evaluation until this
 // resolves, so the schema is guaranteed applied before any of them run,

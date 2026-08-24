@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../lib/usePersistedState';
 import { useAuth } from '../lib/AuthContext';
+import RankingModal from '../components/RankingModal';
 
 const NO_ALBUM = 'Singles / Other';
 const DISPLAY_NAME_PATTERN = /^[a-zA-Z0-9]{3,15}$/;
@@ -26,6 +27,13 @@ export default function ProfilePage() {
   const [viewMode, setViewMode] = usePersistedState('renquiz.songsViewMode', 'album'); // 'album' | 'list'
   const [sortKey, setSortKey] = useState('title');
   const [sortDir, setSortDir] = useState(1);
+  const [rankingOpen, setRankingOpen] = useState(false);
+
+  function loadSongs() {
+    fetch('/api/songs?stats=1')
+      .then((r) => r.json())
+      .then(setSongs);
+  }
 
   useEffect(() => {
     if (user) setNameDraft(user.display_name);
@@ -38,9 +46,7 @@ export default function ProfilePage() {
         setPrefs(p);
         setDraft(p);
       });
-    fetch('/api/songs?stats=1')
-      .then((r) => r.json())
-      .then(setSongs);
+    loadSongs();
   }, []);
 
   const albumGroups = useMemo(() => {
@@ -194,6 +200,15 @@ export default function ProfilePage() {
         {saving ? 'Saving...' : 'Save'}
       </button>
       {saved && <span className="save-confirm"> Saved.</span>}
+
+      <h3>My ratings</h3>
+      <p className="song-meta">
+        Drag your favorite songs into order instead of typing a number per song — top of the list scores highest.
+      </p>
+      <button className="btn-secondary" onClick={() => setRankingOpen(true)}>
+        Rank your songs
+      </button>
+      {rankingOpen && <RankingModal onClose={() => setRankingOpen(false)} onSaved={loadSongs} />}
 
       <h3>My songs</h3>
       <p className="song-meta">

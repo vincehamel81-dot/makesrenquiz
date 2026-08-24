@@ -3,7 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, withTransaction } from './db.js';
+import { db, withTransaction, batchWrite } from './db.js';
 import { generateSession, buildChoices, markAsked, randomTriviaForSong, audioClipUrl } from './questionTypes.js';
 import { applyFeedback } from './feedback.js';
 import { rebuildLyricQuestions } from './lyricQuestions.js';
@@ -459,17 +459,33 @@ app.delete('/api/songs/:slug', requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// Set your own personal preference rating (0-1000) for a song.
-app.put('/api/songs/:slug/rating', requireAuth, async (req, res) => {
-  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
-  if (!song) return res.status(404).json({ error: 'not found' });
-  const rating = Number(req.body.rating);
-  if (!Number.isFinite(rating)) return res.status(400).json({ error: 'rating (number) required' });
-  await db.prepare(
-    `INSERT INTO user_song_ratings (user_id, song_id, rating) VALUES (?, ?, ?)
-     ON CONFLICT(user_id, song_id) DO UPDATE SET rating = excluded.rating`
-  ).run(currentUserId(req), song.id, rating);
-  res.json({ ok: true, rating });
+// Set your song ranking in one shot: ranked_song_ids is an ordered list,
+// most-preferred first — index 0 becomes rating 999, index 1 becomes 998,
+// and so on. Anything not in the list (dragged back out, or never ranked)
+// is reset to 0, the same "not rated" value everywhere else already treats
+// as the default (see GET /api/songs?stats=1's COALESCE). Replaces the old
+// per-song free-text PUT /api/songs/:slug/rating — the whole point of a
+// ranked list is that scores are derived from relative order, not typed in
+// one at a time, so there's no longer a single-song write path.
+app.put('/api/ratings', requireAuth, async (req, res) => {
+  const ids = req.body.ranked_song_ids;
+  if (!Array.isArray(ids) || !ids.every((id) => Number.isInteger(id) && id > 0)) {
+    return res.status(400).json({ error: 'ranked_song_ids must be an array of positive integers' });
+  }
+  if (new Set(ids).size !== ids.length) {
+    return res.status(400).json({ error: 'ranked_song_ids must not contain duplicates' });
+  }
+  const userId = currentUserId(req);
+  const statements = [{ sql: 'UPDATE user_song_ratings SET rating = 0 WHERE user_id = ?', args: [userId] }];
+  for (let i = 0; i < ids.length; i++) {
+    statements.push({
+      sql: `INSERT INTO user_song_ratings (user_id, song_id, rating) VALUES (?, ?, ?)
+            ON CONFLICT(user_id, song_id) DO UPDATE SET rating = excluded.rating`,
+      args: [userId, ids[i], 999 - i],
+    });
+  }
+  await batchWrite(statements);
+  res.json({ ok: true });
 });
 
 app.put('/api/songs/:slug/title', requireAdmin, async (req, res) => {

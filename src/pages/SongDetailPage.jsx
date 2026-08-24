@@ -31,8 +31,6 @@ export default function SongDetailPage() {
   const [saving, setSaving] = useState(false);
   const [addingEgg, setAddingEgg] = useState(false);
   const [eggForm, setEggForm] = useState(EMPTY_EGG_FORM);
-  const [ratingDraft, setRatingDraft] = useState('');
-  const [savingRating, setSavingRating] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [urlDraft, setUrlDraft] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
@@ -52,10 +50,6 @@ export default function SongDetailPage() {
 
   useEffect(load, [slug]);
   useEffect(() => setShowVideo(false), [slug]);
-
-  useEffect(() => {
-    if (detail) setRatingDraft(String(detail.rating ?? 0));
-  }, [detail?.rating]);
 
   useEffect(() => {
     if (detail) setUrlDraft(detail.youtube_url ?? '');
@@ -88,19 +82,6 @@ export default function SongDetailPage() {
     }
     setDetail((d) => ({ ...d, title: data.title }));
     setEditingTitle(false);
-  }
-
-  async function saveRating() {
-    const rating = Number(ratingDraft);
-    if (!Number.isFinite(rating)) return;
-    setSavingRating(true);
-    await fetch(`/api/songs/${slug}/rating`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rating }),
-    });
-    setDetail((d) => ({ ...d, rating }));
-    setSavingRating(false);
   }
 
   async function saveUrl() {
@@ -288,21 +269,10 @@ export default function SongDetailPage() {
       </div>
 
       {user && (
-        <div className="rating-field">
-          <label>
-            Your rating (0–1000):
-            <input
-              type="number"
-              min="0"
-              max="1000"
-              value={ratingDraft}
-              onChange={(e) => setRatingDraft(e.target.value)}
-            />
-          </label>
-          <button onClick={saveRating} disabled={savingRating || Number(ratingDraft) === detail.rating}>
-            {savingRating ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+        <p className="song-meta">
+          Your rating: {detail.rating > 0 ? detail.rating : 'not ranked yet'} — manage it from{' '}
+          <Link to="/profile">Profile</Link>.
+        </p>
       )}
 
       <h3>Audio clips</h3>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import QuizPage from './pages/QuizPage';
 import HistoryPage from './pages/HistoryPage';
 import SongKnowledgePage from './pages/SongKnowledgePage';
@@ -18,11 +18,10 @@ import './App.css';
 const TABS = [
   { to: '/', label: 'Quiz', end: true },
   { to: '/songs', label: 'Songs' },
-  { to: '/history', label: 'History' },
-  { to: '/song-knowledge', label: 'Song Knowledge' },
   { to: '/lookup', label: 'Lyric lookup' },
   { to: '/leaderboard', label: 'Leaderboard' },
-  { to: '/profile', label: 'Profile' },
+  { to: '/song-knowledge', label: 'Song Knowledge' },
+  { to: '/history', label: 'History' },
 ];
 
 function AccountControl() {
@@ -31,7 +30,9 @@ function AccountControl() {
   if (!user) return <GoogleSignInButton />;
   return (
     <div className="account-control">
-      <span>{user.display_name}</span>
+      <Link to="/profile" className="account-name">
+        {user.display_name}
+      </Link>
       <button className="btn-secondary" onClick={logout}>
         Sign out
       </button>
