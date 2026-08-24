@@ -9,9 +9,10 @@ const SONG_ANSWER_TYPES = new Set(['audio', 'lyric', 'theme', 'follow-up']);
 // exactly was never a fair bar, so these skip straight to 4 choices and
 // award full credit (there's no "lesser" free-text path being avoided).
 const FORCE_CHOICE_TYPES = new Set(['bio']);
-// Standard session length — also what a session needs to hit to be
-// leaderboard-eligible (see GET /api/leaderboard).
-const SESSION_LENGTH = 25;
+// Session length isn't set here — omitting `count` lets the server apply
+// its own default (server/index.js's SESSION_LENGTH), which is also the
+// single source of truth leaderboard eligibility is checked against. One
+// constant to change, not two kept in sync by hand.
 // Hardcoded per-type point values (lyrics score highest since they're the
 // hardest to pin down cold, then clips, then everything else).
 const TYPE_POINTS = { audio: 45, lyric: 50 };
@@ -59,7 +60,7 @@ export default function QuizPage({ songTitles }) {
 
   useEffect(() => {
     if (needsOnboarding !== false) return;
-    fetch(`/api/quiz/questions?count=${SESSION_LENGTH}`)
+    fetch('/api/quiz/questions')
       .then((r) => r.json())
       .then(({ session_id, questions }) => {
         setSessionId(session_id);

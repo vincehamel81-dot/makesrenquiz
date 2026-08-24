@@ -1,29 +1,30 @@
 import { useEffect, useState } from 'react';
 
 // v1 formula (placeholder, will be retuned): active_song_count * points,
-// from each user's best fully-completed 30-question session. Shorter
-// sessions still show up in that user's own History, just not here — see
-// GET /api/leaderboard.
+// from each user's best fully-completed session. Shorter sessions still
+// show up in that user's own History, just not here — see GET /api/leaderboard,
+// which is also where session_length actually comes from (not hardcoded here).
 export default function LeaderboardPage() {
-  const [rows, setRows] = useState(null);
+  const [data, setData] = useState(null);
 
   useEffect(() => {
     fetch('/api/leaderboard')
       .then((r) => r.json())
-      .then(setRows);
+      .then(setData);
   }, []);
 
-  if (!rows) return <p>Loading...</p>;
+  if (!data) return <p>Loading...</p>;
+  const { session_length, entries } = data;
 
   return (
     <div className="leaderboard">
       <h2>Leaderboard</h2>
       <p className="song-meta">
-        Best completed 30-question session, score = number of songs checked &times; points earned. Early formula —
-        expect it to change.
+        Best completed {session_length}-question session, score = number of songs checked &times; points earned.
+        Early formula — expect it to change.
       </p>
-      {rows.length === 0 ? (
-        <p>No one has completed a full 30-question session yet.</p>
+      {entries.length === 0 ? (
+        <p>No one has completed a full {session_length}-question session yet.</p>
       ) : (
         <table>
           <thead>
@@ -36,7 +37,7 @@ export default function LeaderboardPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {entries.map((r, i) => (
               <tr key={r.user_id}>
                 <td>{i + 1}</td>
                 <td>{r.name}</td>

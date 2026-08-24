@@ -525,7 +525,8 @@ app.get('/api/leaderboard', async (_req, res) => {
     }
   }
 
-  res.json([...best.values()].sort((a, b) => b.score - a.score));
+  const entries = [...best.values()].sort((a, b) => b.score - a.score);
+  res.json({ session_length: SESSION_LENGTH, entries });
 });
 
 // Vercel's runtime invokes the exported app directly per-request rather
