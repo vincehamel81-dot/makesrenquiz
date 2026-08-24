@@ -1,12 +1,21 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, withTransaction } from './db.js';
-import { generateSession, buildChoices, markAsked, randomTriviaForSong } from './questionTypes.js';
+import { generateSession, buildChoices, markAsked, randomTriviaForSong, audioClipUrl } from './questionTypes.js';
 import { applyFeedback } from './feedback.js';
 import { rebuildLyricQuestions } from './lyricQuestions.js';
-import { currentUserId } from './auth.js';
+import { currentUserId, requireAuth, requireAdmin } from './auth.js';
+import {
+  verifyGoogleToken,
+  findOrCreateUser,
+  signSession,
+  verifySession,
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_MAX_AGE_MS,
+} from './googleAuth.js';
 
 // Standard quiz session length — also what a session needs to hit to be
 // leaderboard-eligible (see GET /api/leaderboard). Mirrored on the client
@@ -17,7 +26,53 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 app.use('/audio', express.static(path.join(__dirname, '..', 'public', 'audio')));
+
+// Decodes the session cookie if present and sets req.userId/req.userRole —
+// never rejects by itself. requireAuth/requireAdmin (server/auth.js) are
+// what actually gate a route; routes that stay public (Songs, Lyric
+// lookup) just read currentUserId(req), which is null when signed out.
+app.use((req, _res, next) => {
+  const token = req.cookies[SESSION_COOKIE_NAME];
+  const session = token && verifySession(token);
+  if (session) {
+    req.userId = session.userId;
+    req.userRole = session.role;
+  }
+  next();
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'token required' });
+  let payload;
+  try {
+    payload = await verifyGoogleToken(token);
+  } catch {
+    return res.status(401).json({ error: 'invalid Google token' });
+  }
+  const user = await findOrCreateUser(payload);
+  const session = signSession(user);
+  res.cookie(SESSION_COOKIE_NAME, session, {
+    httpOnly: true,
+    secure: !!process.env.VERCEL,
+    sameSite: 'lax',
+    maxAge: SESSION_COOKIE_MAX_AGE_MS,
+  });
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, picture_url: user.picture_url });
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  res.clearCookie(SESSION_COOKIE_NAME);
+  res.json({ ok: true });
+});
+
+app.get('/api/me', async (req, res) => {
+  if (!req.userId) return res.json(null);
+  const user = await db.prepare('SELECT id, name, email, role, picture_url FROM users WHERE id = ?').get(req.userId);
+  res.json(user ?? null);
+});
 
 // Song titles for autocomplete, or (with ?stats=1) the enriched list for the
 // browsable Songs page: lyric/clip/easter-egg counts so you can see at a
@@ -53,7 +108,7 @@ function slugify(title) {
 // Add a new song. Auto-checked for the creator, since adding it here means
 // you want to be quizzed on it — though it won't produce any audio/lyric
 // questions until the data pipeline (tools/) processes it.
-app.post('/api/songs', async (req, res) => {
+app.post('/api/songs', requireAdmin, async (req, res) => {
   const title = (req.body.title || '').trim();
   if (!title) return res.status(400).json({ error: 'title required' });
   const slug = slugify(title);
@@ -91,12 +146,12 @@ app.post('/api/songs', async (req, res) => {
 
 // Which songs the current user has checked off as "known" / wants quizzed on.
 // An empty list is the signal the Quiz page uses to show the onboarding gate.
-app.get('/api/user-songs', async (req, res) => {
+app.get('/api/user-songs', requireAuth, async (req, res) => {
   const rows = await db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(currentUserId(req));
   res.json({ song_ids: rows.map((r) => r.song_id) });
 });
 
-app.put('/api/user-songs/:songId', async (req, res) => {
+app.put('/api/user-songs/:songId', requireAuth, async (req, res) => {
   await db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
     currentUserId(req),
     Number(req.params.songId)
@@ -104,7 +159,7 @@ app.put('/api/user-songs/:songId', async (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/user-songs/:songId', async (req, res) => {
+app.delete('/api/user-songs/:songId', requireAuth, async (req, res) => {
   await db.prepare('DELETE FROM user_songs WHERE user_id = ? AND song_id = ?').run(
     currentUserId(req),
     Number(req.params.songId)
@@ -116,14 +171,14 @@ const DEFAULT_PREFERENCES = { audio_pct: 60, lyric_pct: 38, trivia_pct: 2 };
 
 // Your audio/lyric/trivia quiz mix. No saved row yet just means "use the
 // defaults" — same pattern as ratings, nothing is written until you save.
-app.get('/api/preferences', async (req, res) => {
+app.get('/api/preferences', requireAuth, async (req, res) => {
   const prefs = await db
     .prepare('SELECT audio_pct, lyric_pct, trivia_pct FROM user_preferences WHERE user_id = ?')
     .get(currentUserId(req));
   res.json(prefs ?? DEFAULT_PREFERENCES);
 });
 
-app.put('/api/preferences', async (req, res) => {
+app.put('/api/preferences', requireAuth, async (req, res) => {
   const audio_pct = Number(req.body.audio_pct);
   const lyric_pct = Number(req.body.lyric_pct);
   const trivia_pct = Number(req.body.trivia_pct);
@@ -145,7 +200,7 @@ app.put('/api/preferences', async (req, res) => {
 // Also opens a quiz_sessions row, snapshotting how many songs were checked
 // at the time — History groups by this, and the Leaderboard uses it to
 // weight completed sessions.
-app.get('/api/quiz/questions', async (req, res) => {
+app.get('/api/quiz/questions', requireAuth, async (req, res) => {
   const count = Math.min(Number(req.query.count) || SESSION_LENGTH, 100);
   const userId = currentUserId(req);
   const activeSongCount = (await db.prepare('SELECT COUNT(*) as n FROM user_songs WHERE user_id = ?').get(userId)).n;
@@ -156,7 +211,7 @@ app.get('/api/quiz/questions', async (req, res) => {
 });
 
 // Multiple-choice reveal for a given question
-app.post('/api/quiz/choices', async (req, res) => {
+app.post('/api/quiz/choices', requireAuth, async (req, res) => {
   const { type, correct_answer, question_id } = req.body;
   if (!type || !correct_answer) return res.status(400).json({ error: 'type and correct_answer required' });
   try {
@@ -167,7 +222,7 @@ app.post('/api/quiz/choices', async (req, res) => {
 });
 
 // Record an attempt
-app.post('/api/attempts', async (req, res) => {
+app.post('/api/attempts', requireAuth, async (req, res) => {
   const { question_type, question_id, song_id, session_id, prompt, correct_answer, user_answer, mode, was_correct, points } =
     req.body;
   await db.prepare(
@@ -191,7 +246,7 @@ app.post('/api/attempts', async (req, res) => {
 });
 
 // Calibration feedback on a bank question: perfect | too_hard | too_easy | not_relevant
-app.post('/api/questions/:id/feedback', async (req, res) => {
+app.post('/api/questions/:id/feedback', requireAdmin, async (req, res) => {
   const { action } = req.body;
   try {
     res.json(await applyFeedback(Number(req.params.id), action));
@@ -204,7 +259,7 @@ app.post('/api/questions/:id/feedback', async (req, res) => {
 // `count` is the total number of lines wanted from the start of the
 // question's bundle, not an increment, so the client can just re-request a
 // bigger number each time rather than tracking an offset.
-app.get('/api/questions/:id/lyric-lines', async (req, res) => {
+app.get('/api/questions/:id/lyric-lines', requireAuth, async (req, res) => {
   const q = await db.prepare(`SELECT song_id, start_line_no FROM questions WHERE id = ? AND type = 'lyric'`).get(req.params.id);
   if (!q) return res.status(404).json({ error: 'not found' });
   const count = Math.min(Math.max(Number(req.query.count) || 2, 1), 12);
@@ -220,7 +275,7 @@ app.get('/api/questions/:id/lyric-lines', async (req, res) => {
 // as Song Knowledge — a correct 4-choice guess counts as 0.5 here too, so
 // the accuracy trend reflects actually knowing things, not luck.
 const CORRECT_WEIGHTED = `SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END)`;
-app.get('/api/history', async (req, res) => {
+app.get('/api/history', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
   // active_song_count comes from the session an attempt belongs to; attempts
   // from before session tracking existed (session_id NULL) group together
@@ -243,7 +298,7 @@ app.get('/api/history', async (req, res) => {
 });
 
 // A "did you know" trivia snippet for a song, shown after answering
-app.get('/api/songs/:id/trivia', async (req, res) => {
+app.get('/api/songs/:id/trivia', requireAuth, async (req, res) => {
   res.json(await randomTriviaForSong(Number(req.params.id)));
 });
 
@@ -263,12 +318,13 @@ app.get('/api/songs/:slug/detail', async (req, res) => {
   const easterEggs = await db
     .prepare('SELECT id, term, description, confidence, source_url FROM easter_eggs WHERE song_id = ? AND deleted = 0 ORDER BY id')
     .all(song.id);
-  const clips = await db
+  const clipRows = await db
     .prepare(
       `SELECT id, start_sec, duration_sec, file_path FROM questions
        WHERE song_id = ? AND type = 'audio' AND status != 'retired' ORDER BY start_sec`
     )
     .all(song.id);
+  const clips = clipRows.map((c) => ({ ...c, audio_url: audioClipUrl(c.file_path) }));
   res.json({
     ...song,
     collaborators: JSON.parse(song.collaborators || '[]'),
@@ -282,7 +338,7 @@ app.get('/api/songs/:slug/detail', async (req, res) => {
 // Manual lyrics editor — for spoken-word/non-song entries or filling gaps
 // the scraper couldn't find. Replaces the song's lines and rebuilds its
 // slice of the lyric question pool.
-app.put('/api/songs/:slug/lyrics', async (req, res) => {
+app.put('/api/songs/:slug/lyrics', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const { text } = req.body;
@@ -310,7 +366,7 @@ app.put('/api/songs/:slug/lyrics', async (req, res) => {
 
 // Soft-delete an easter egg you don't find useful. Any quiz question built
 // from it is retired (not deleted, in case it has attempt history).
-app.delete('/api/easter-eggs/:id', async (req, res) => {
+app.delete('/api/easter-eggs/:id', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   await db.prepare('UPDATE easter_eggs SET deleted = 1 WHERE id = ?').run(id);
   await db.prepare(`UPDATE questions SET status = 'retired' WHERE type = 'reference' AND easter_egg_id = ?`).run(id);
@@ -318,7 +374,7 @@ app.delete('/api/easter-eggs/:id', async (req, res) => {
 });
 
 // Manually add an easter egg from the song page.
-app.post('/api/songs/:slug/easter-eggs', async (req, res) => {
+app.post('/api/songs/:slug/easter-eggs', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const { term, description, confidence, quizzable, source_url } = req.body;
@@ -338,7 +394,7 @@ app.post('/api/songs/:slug/easter-eggs', async (req, res) => {
 // Retire a single quiz question (e.g. one bad audio clip) without touching
 // the rest of the song's data. Soft-delete, consistent with the calibration
 // feedback's "not relevant" action.
-app.delete('/api/questions/:id', async (req, res) => {
+app.delete('/api/questions/:id', requireAdmin, async (req, res) => {
   await db.prepare(`UPDATE questions SET status = 'retired' WHERE id = ?`).run(Number(req.params.id));
   res.json({ ok: true });
 });
@@ -348,7 +404,7 @@ app.delete('/api/questions/:id', async (req, res) => {
 // preserved but detached (song_id set null) rather than deleted, so your
 // score history stays intact. Other songs' follow_up_to pointing at this one
 // are cleared too.
-app.delete('/api/songs/:slug', async (req, res) => {
+app.delete('/api/songs/:slug', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const id = song.id;
@@ -376,7 +432,7 @@ app.delete('/api/songs/:slug', async (req, res) => {
 });
 
 // Set your own personal preference rating (0-1000) for a song.
-app.put('/api/songs/:slug/rating', async (req, res) => {
+app.put('/api/songs/:slug/rating', requireAuth, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const rating = Number(req.body.rating);
@@ -388,7 +444,7 @@ app.put('/api/songs/:slug/rating', async (req, res) => {
   res.json({ ok: true, rating });
 });
 
-app.put('/api/songs/:slug/title', async (req, res) => {
+app.put('/api/songs/:slug/title', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const title = (req.body.title || '').trim();
@@ -404,7 +460,7 @@ app.put('/api/songs/:slug/title', async (req, res) => {
 // Assign (or create) the album a song belongs to. Lets a new collab album
 // like "Busking Sessions (The Big Push)" be created just by typing its name
 // on any of its songs, same as how titles get renamed one at a time.
-app.put('/api/songs/:slug/album', async (req, res) => {
+app.put('/api/songs/:slug/album', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const name = (req.body.album || '').trim();
@@ -418,7 +474,7 @@ app.put('/api/songs/:slug/album', async (req, res) => {
   res.json({ ok: true, album: name });
 });
 
-app.put('/api/songs/:slug/youtube-url', async (req, res) => {
+app.put('/api/songs/:slug/youtube-url', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
   const url = (req.body.youtube_url || '').trim() || null;
@@ -450,7 +506,7 @@ app.get('/api/lookup', async (req, res) => {
 // from the 4-choice fallback counts as half credit here — it reflects
 // recognition/hesitation, not the same confident recall as a free-typed
 // answer, even though the fraction itself isn't a literal accuracy %.
-app.get('/api/stats/songs', async (req, res) => {
+app.get('/api/stats/songs', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
   const rows = await db
     .prepare(

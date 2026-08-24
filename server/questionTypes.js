@@ -21,18 +21,22 @@ async function bucketTargetFor(userId) {
   return { audio: prefs.audio_pct / 100, lyric: prefs.lyric_pct / 100, trivia: prefs.trivia_pct / 100 };
 }
 
+// BLOB_PUBLIC_BASE_URL is set once clips are synced to Vercel Blob
+// (tools/syncAudioToBlob.js); unset locally falls back to the Express
+// /audio static route serving public/audio directly. Exported since
+// SongDetailPage's clip list (GET /api/songs/:slug/detail) needs the same
+// URL, not just the quiz's hydrate() path.
+export function audioClipUrl(filePath) {
+  return process.env.BLOB_PUBLIC_BASE_URL ? `${process.env.BLOB_PUBLIC_BASE_URL}/${filePath}` : `/audio/${filePath}`;
+}
+
 async function hydrate(row) {
   const song = row.song_id ? await songRow(row.song_id) : null;
   switch (row.type) {
     case 'audio':
-      // BLOB_PUBLIC_BASE_URL is set once clips are synced to Vercel Blob
-      // (tools/syncAudioToBlob.js); unset locally falls back to the
-      // Express /audio static route serving public/audio directly.
       return {
         prompt: 'What song is this?',
-        audio_url: process.env.BLOB_PUBLIC_BASE_URL
-          ? `${process.env.BLOB_PUBLIC_BASE_URL}/${row.file_path}`
-          : `/audio/${row.file_path}`,
+        audio_url: audioClipUrl(row.file_path),
         clip_duration_sec: row.duration_sec,
         correct_answer: song.title,
       };

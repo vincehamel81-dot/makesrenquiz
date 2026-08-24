@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { usePersistedState } from '../lib/usePersistedState';
+import { useAuth } from '../lib/AuthContext';
 
 const COLUMNS = [
   { key: 'known', label: '' },
@@ -36,6 +37,7 @@ function sortValue(song, key) {
 const EMPTY_ADD_FORM = { title: '', youtube_url: '', album: '', collaborators: '' };
 
 export default function SongsListPage() {
+  const { isAdmin } = useAuth();
   const [songs, setSongs] = useState([]);
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState('title');
@@ -114,15 +116,17 @@ export default function SongsListPage() {
             {hideUnchecked ? 'Show all songs' : 'Show only my songs'}
           </button>
         )}
-        <button className="btn-secondary" onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : '+ Add song'}
-        </button>
+        {isAdmin && (
+          <button className="btn-secondary" onClick={() => setAdding((v) => !v)}>
+            {adding ? 'Cancel' : '+ Add song'}
+          </button>
+        )}
       </div>
       <p className="song-meta">
         Manage which songs you're quizzed on from <Link to="/profile">Profile</Link>.
       </p>
 
-      {adding && (
+      {isAdmin && adding && (
         <form className="egg-form" onSubmit={submitAdd}>
           <input
             type="text"

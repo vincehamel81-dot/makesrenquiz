@@ -83,7 +83,7 @@ export default function QuizPage({ songTitles }) {
   if (needsOnboarding) {
     return (
       <p>
-        You haven't picked any songs to be quizzed on yet. Head to the <Link to="/songs">Songs</Link> tab and check
+        You haven't picked any songs to be quizzed on yet. Head to your <Link to="/profile">Profile</Link> and check
         off the ones you want — you can always add more later.
       </p>
     );
