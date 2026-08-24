@@ -11,7 +11,7 @@ const COLUMNS = [
 ];
 
 function pct(bucket) {
-  return bucket.total === 0 ? -1 : bucket.correct / bucket.total;
+  return bucket.maxPoints === 0 ? -1 : bucket.points / bucket.maxPoints;
 }
 
 function sortValue(song, key) {
@@ -21,8 +21,8 @@ function sortValue(song, key) {
 }
 
 function formatBucket(bucket) {
-  if (bucket.total === 0) return '0/0 (-)';
-  return `${bucket.correct}/${bucket.total} (${Math.round((100 * bucket.correct) / bucket.total)}%)`;
+  if (bucket.maxPoints === 0) return '0/0 (-)';
+  return `${bucket.points}/${bucket.maxPoints} (${Math.round((100 * bucket.points) / bucket.maxPoints)}%)`;
 }
 
 export default function SongKnowledgePage() {
@@ -52,7 +52,7 @@ export default function SongKnowledgePage() {
       // e.g. 4/4 (100%) sits above 1/1 (100%) regardless of sort direction —
       // more attempts at the same accuracy is the more meaningful result.
       if (sortKey !== 'title') {
-        return b[sortKey].total - a[sortKey].total;
+        return b[sortKey].maxPoints - a[sortKey].maxPoints;
       }
       return 0;
     });

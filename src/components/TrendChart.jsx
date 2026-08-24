@@ -31,13 +31,13 @@ export default function TrendChart({ daily }) {
 
   if (days.length === 1) {
     const totals = daily.reduce(
-      (acc, d) => ({ correct: acc.correct + d.correct, attempts: acc.attempts + d.attempts }),
-      { correct: 0, attempts: 0 }
+      (acc, d) => ({ points: acc.points + d.points, maxPoints: acc.maxPoints + d.max_points }),
+      { points: 0, maxPoints: 0 }
     );
-    const pct = Math.round((100 * totals.correct) / totals.attempts);
+    const pct = Math.round((100 * totals.points) / totals.maxPoints);
     return (
       <p>
-        {days[0]}: {pct}% accuracy ({totals.correct}/{totals.attempts}). Play another day to see a trend.
+        {days[0]}: {pct}% accuracy ({totals.points}/{totals.maxPoints} pts). Play another day to see a trend.
       </p>
     );
   }
@@ -51,7 +51,7 @@ export default function TrendChart({ daily }) {
     color: PALETTE[si % PALETTE.length],
     points: daily
       .filter((d) => d.active_song_count === key)
-      .map((d) => ({ ...d, i: dayIndex.get(d.day), pct: (100 * d.correct) / d.attempts }))
+      .map((d) => ({ ...d, i: dayIndex.get(d.day), pct: (100 * d.points) / d.max_points }))
       .sort((a, b) => a.i - b.i),
   }));
 
@@ -139,8 +139,8 @@ export default function TrendChart({ daily }) {
           <strong>{days[hoverDay]}</strong>
           {hoverRows.map((r) => (
             <div key={r.active_song_count ?? 'legacy'}>
-              {seriesLabel(r.active_song_count)}: {Math.round((100 * r.correct) / r.attempts)}% ({r.correct}/{r.attempts}),{' '}
-              {r.points} pts
+              {seriesLabel(r.active_song_count)}: {Math.round((100 * r.points) / r.max_points)}% ({r.points}/
+              {r.max_points} pts)
             </div>
           ))}
         </div>

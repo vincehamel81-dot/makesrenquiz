@@ -21,7 +21,7 @@ export default function LeaderboardPage() {
       <h2>Leaderboard</h2>
       <p className="song-meta">
         Top {limit} completed {session_length}-question sessions, score = (number of songs checked &divide; 2)
-        &times; points earned. Early formula — expect it to change.
+        &times; points earned.
       </p>
       {entries.length === 0 ? (
         <p>No one has completed a full {session_length}-question session yet.</p>

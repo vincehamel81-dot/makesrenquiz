@@ -295,10 +295,14 @@ app.get('/api/questions/:id/lyric-lines', requireAuth, async (req, res) => {
   res.json({ lines: lines.map((l) => l.text) });
 });
 
-// History: daily totals + accuracy by question type. Same half-credit rule
-// as Song Knowledge — a correct 4-choice guess counts as 0.5 here too, so
-// the accuracy trend reflects actually knowing things, not luck.
-const CORRECT_WEIGHTED = `SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END)`;
+// History: daily totals + accuracy by question type. "Accuracy" here is
+// points-earned over points-possible per attempt, not a correct/wrong
+// count — a raw correct count treats a cold, confident answer the same as
+// a lucky 4-choice guess or a lyric answer given only after peeking at
+// extra context, both of which already earn fewer points (see QuizPage.jsx's
+// TYPE_POINTS/LYRIC_REVEAL_POINTS/CHOICE_FALLBACK_POINTS) — points-vs-max is
+// the truer "did you actually know this" signal.
+const MAX_POINTS_SQL = `SUM(CASE question_type WHEN 'audio' THEN 45 WHEN 'lyric' THEN 50 ELSE 40 END)`;
 app.get('/api/history', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
   // active_song_count comes from the session an attempt belongs to; attempts
@@ -307,14 +311,14 @@ app.get('/api/history', requireAuth, async (req, res) => {
   const daily = await db
     .prepare(
       `SELECT date(a.played_at) as day, s.active_song_count as active_song_count,
-              SUM(a.points) as points, COUNT(*) as attempts, ${CORRECT_WEIGHTED} as correct
+              SUM(a.points) as points, COUNT(*) as attempts, ${MAX_POINTS_SQL} as max_points
        FROM quiz_attempts a LEFT JOIN quiz_sessions s ON s.id = a.session_id
        WHERE a.user_id = ? GROUP BY day, active_song_count ORDER BY day`
     )
     .all(userId);
   const byType = await db
     .prepare(
-      `SELECT question_type, COUNT(*) as attempts, ${CORRECT_WEIGHTED} as correct, SUM(points) as points
+      `SELECT question_type, COUNT(*) as attempts, SUM(points) as points, ${MAX_POINTS_SQL} as max_points
        FROM quiz_attempts WHERE user_id = ? GROUP BY question_type`
     )
     .all(userId);
@@ -526,16 +530,13 @@ app.get('/api/lookup', async (req, res) => {
 });
 
 // Per-song accuracy broken down into lyrics / audio-clip / other-fact
-// questions, for the "Song Knowledge" practice view. A correct answer picked
-// from the 4-choice fallback counts as half credit here — it reflects
-// recognition/hesitation, not the same confident recall as a free-typed
-// answer, even though the fraction itself isn't a literal accuracy %.
+// questions, for the "Song Knowledge" practice view. Same points-vs-max
+// methodology as /api/history — see MAX_POINTS_SQL's comment above.
 app.get('/api/stats/songs', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
   const rows = await db
     .prepare(
-      `SELECT song_id, question_type, COUNT(*) as attempts,
-              SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END) as correct
+      `SELECT song_id, question_type, COUNT(*) as attempts, SUM(points) as points, ${MAX_POINTS_SQL} as max_points
        FROM quiz_attempts WHERE user_id = ? AND song_id IS NOT NULL GROUP BY song_id, question_type`
     )
     .all(userId);
@@ -545,14 +546,14 @@ app.get('/api/stats/songs', requireAuth, async (req, res) => {
   for (const r of rows) {
     if (!bySong.has(r.song_id)) {
       bySong.set(r.song_id, {
-        lyrics: { correct: 0, total: 0 },
-        video: { correct: 0, total: 0 },
-        other: { correct: 0, total: 0 },
+        lyrics: { points: 0, maxPoints: 0 },
+        video: { points: 0, maxPoints: 0 },
+        other: { points: 0, maxPoints: 0 },
       });
     }
     const bucket = bySong.get(r.song_id)[bucketOf(r.question_type)];
-    bucket.correct += r.correct;
-    bucket.total += r.attempts;
+    bucket.points += r.points;
+    bucket.maxPoints += r.max_points;
   }
 
   const ratingRows = await db.prepare('SELECT song_id, rating FROM user_song_ratings WHERE user_id = ?').all(userId);
@@ -567,9 +568,9 @@ app.get('/api/stats/songs', requireAuth, async (req, res) => {
       rating: ratings.get(s.id) ?? 0,
       known: knownIds.has(s.id),
       ...(bySong.get(s.id) ?? {
-        lyrics: { correct: 0, total: 0 },
-        video: { correct: 0, total: 0 },
-        other: { correct: 0, total: 0 },
+        lyrics: { points: 0, maxPoints: 0 },
+        video: { points: 0, maxPoints: 0 },
+        other: { points: 0, maxPoints: 0 },
       }),
     }))
   );

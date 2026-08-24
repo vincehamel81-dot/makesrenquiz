@@ -35,7 +35,7 @@ export default function HistoryPage() {
               <td>{d.active_song_count ?? '—'}</td>
               <td>{d.points}</td>
               <td>
-                {d.correct}/{d.attempts} ({Math.round((100 * d.correct) / d.attempts)}%)
+                {d.points}/{d.max_points} ({Math.round((100 * d.points) / d.max_points)}%)
               </td>
             </tr>
           ))}
@@ -57,7 +57,7 @@ export default function HistoryPage() {
               <td>{t.question_type}</td>
               <td>{t.points}</td>
               <td>
-                {t.correct}/{t.attempts} ({Math.round((100 * t.correct) / t.attempts)}%)
+                {t.points}/{t.max_points} ({Math.round((100 * t.points) / t.max_points)}%)
               </td>
             </tr>
           ))}
