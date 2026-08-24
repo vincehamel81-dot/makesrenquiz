@@ -528,5 +528,13 @@ app.get('/api/leaderboard', async (_req, res) => {
   res.json([...best.values()].sort((a, b) => b.score - a.score));
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`renquiz API listening on http://localhost:${PORT}`));
+// Vercel's runtime invokes the exported app directly per-request rather
+// than through a bound port, so skip listening there (process.env.VERCEL
+// is set automatically in that environment) — local dev and any other
+// host that just runs this file directly still get a real listening server.
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => console.log(`renquiz API listening on http://localhost:${PORT}`));
+}
+
+export default app;
