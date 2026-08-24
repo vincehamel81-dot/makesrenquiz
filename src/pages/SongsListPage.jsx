@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { usePersistedState } from '../lib/usePersistedState';
 
 const COLUMNS = [
+  { key: 'known', label: '' },
   { key: 'title', label: 'Title' },
   { key: 'lyrics', label: 'Lyrics' },
   { key: 'clips', label: 'Clips' },
@@ -12,6 +14,8 @@ const COLUMNS = [
 
 function sortValue(song, key) {
   switch (key) {
+    case 'known':
+      return song.known ? 1 : 0;
     case 'title':
       return song.title.toLowerCase();
     case 'lyrics':
@@ -29,18 +33,53 @@ function sortValue(song, key) {
   }
 }
 
+const EMPTY_ADD_FORM = { title: '', youtube_url: '', album: '', collaborators: '' };
+
 export default function SongsListPage() {
   const [songs, setSongs] = useState([]);
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState('title');
   const [sortDir, setSortDir] = useState(1);
+  const [hideUnchecked, setHideUnchecked] = usePersistedState('renquiz.hideUnchecked', true);
+  const [adding, setAdding] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
+  const [addError, setAddError] = useState('');
+  const [savingAdd, setSavingAdd] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  function load() {
     fetch('/api/songs?stats=1')
       .then((r) => r.json())
       .then(setSongs);
-  }, []);
+  }
+
+  useEffect(load, []);
+
+  async function submitAdd(e) {
+    e.preventDefault();
+    const title = addForm.title.trim();
+    if (!title) return;
+    setSavingAdd(true);
+    setAddError('');
+    const res = await fetch('/api/songs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        youtube_url: addForm.youtube_url.trim(),
+        album: addForm.album.trim(),
+        collaborators: addForm.collaborators.split(',').map((c) => c.trim()).filter(Boolean),
+      }),
+    });
+    setSavingAdd(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setAddError(data.error || 'Failed to add song');
+      return;
+    }
+    setAddForm(EMPTY_ADD_FORM);
+    load(); // stays open — adding several in a row is the common case
+  }
 
   function toggleSort(key) {
     if (key === sortKey) {
@@ -51,8 +90,11 @@ export default function SongsListPage() {
     }
   }
 
+  const anyKnown = songs.some((s) => s.known);
+
   const visible = useMemo(() => {
-    const filtered = songs.filter((s) => s.title.toLowerCase().includes(filter.toLowerCase()));
+    let filtered = songs.filter((s) => s.title.toLowerCase().includes(filter.toLowerCase()));
+    if (hideUnchecked && anyKnown) filtered = filtered.filter((s) => s.known);
     filtered.sort((a, b) => {
       const va = sortValue(a, sortKey);
       const vb = sortValue(b, sortKey);
@@ -61,11 +103,60 @@ export default function SongsListPage() {
       return 0;
     });
     return filtered;
-  }, [songs, filter, sortKey, sortDir]);
+  }, [songs, filter, sortKey, sortDir, hideUnchecked, anyKnown]);
 
   return (
     <div className="songs-list">
-      <input type="text" placeholder="Filter songs..." value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <div className="songs-list-controls">
+        <input type="text" placeholder="Filter songs..." value={filter} onChange={(e) => setFilter(e.target.value)} />
+        {anyKnown && (
+          <button className="btn-secondary" onClick={() => setHideUnchecked((v) => !v)}>
+            {hideUnchecked ? 'Show all songs' : 'Show only my songs'}
+          </button>
+        )}
+        <button className="btn-secondary" onClick={() => setAdding((v) => !v)}>
+          {adding ? 'Cancel' : '+ Add song'}
+        </button>
+      </div>
+      <p className="song-meta">
+        Manage which songs you're quizzed on from <Link to="/profile">Profile</Link>.
+      </p>
+
+      {adding && (
+        <form className="egg-form" onSubmit={submitAdd}>
+          <input
+            type="text"
+            placeholder="Title (required)"
+            value={addForm.title}
+            onChange={(e) => setAddForm((f) => ({ ...f, title: e.target.value }))}
+            autoFocus
+          />
+          <input
+            type="text"
+            placeholder="YouTube URL"
+            value={addForm.youtube_url}
+            onChange={(e) => setAddForm((f) => ({ ...f, youtube_url: e.target.value }))}
+          />
+          <input
+            type="text"
+            placeholder="Album (optional — creates it if new)"
+            value={addForm.album}
+            onChange={(e) => setAddForm((f) => ({ ...f, album: e.target.value }))}
+          />
+          <input
+            type="text"
+            placeholder="Collaborators, comma-separated (optional)"
+            value={addForm.collaborators}
+            onChange={(e) => setAddForm((f) => ({ ...f, collaborators: e.target.value }))}
+          />
+          <div className="actions">
+            <button type="submit" disabled={savingAdd || !addForm.title.trim()}>
+              {savingAdd ? 'Adding...' : 'Add song'}
+            </button>
+          </div>
+          {addError && <p className="title-error">{addError}</p>}
+        </form>
+      )}
       <div className="data-table">
         <div className="data-table-row songs-table-row data-table-header">
           {COLUMNS.map((c) => (
@@ -81,6 +172,9 @@ export default function SongsListPage() {
             role="button"
             onClick={() => navigate(`/songs/${s.slug}`)}
           >
+            <span className={`mini-badge ${s.known ? 'yes' : 'no'}`} title={s.known ? 'You quiz on this song' : 'Not in your quiz rotation'}>
+              {s.known ? '✓' : ''}
+            </span>
             <span className="song-link-title">
               {s.title}
               {s.album_name && <span className="song-link-album">{s.album_name}</span>}

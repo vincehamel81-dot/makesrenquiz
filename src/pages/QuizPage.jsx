@@ -1,17 +1,32 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import SongAutocomplete from '../components/SongAutocomplete';
 import ClipPlayer from '../components/ClipPlayer';
-import { normalize } from '../lib/normalize';
+import { answerMatches } from '../lib/normalize';
 
 const SONG_ANSWER_TYPES = new Set(['audio', 'lyric', 'theme', 'follow-up']);
 // Types whose correct_answer is a full sentence/prose fact — typing it
 // exactly was never a fair bar, so these skip straight to 4 choices and
 // award full credit (there's no "lesser" free-text path being avoided).
 const FORCE_CHOICE_TYPES = new Set(['bio']);
-// Points drop each time "...more" reveals extra lyric context, so guessing
-// after peeking scores less than nailing it cold.
-const LYRIC_REVEAL_POINTS = [5, 3, 1];
+// Standard session length — also what a session needs to hit to be
+// leaderboard-eligible (see GET /api/leaderboard).
+const SESSION_LENGTH = 25;
+// Hardcoded per-type point values (lyrics score highest since they're the
+// hardest to pin down cold, then clips, then everything else).
+const TYPE_POINTS = { audio: 45, lyric: 50 };
+const DEFAULT_POINTS = 40; // theme/follow-up/album/collaborator/bio/reference
+function pointsForType(type) {
+  return TYPE_POINTS[type] ?? DEFAULT_POINTS;
+}
+// Lyric points still drop with each "...more" reveal — full credit for
+// nailing it cold, less for peeking at more context first.
+const LYRIC_REVEAL_POINTS = [50, 30, 15];
 const MAX_LYRIC_REVEAL_TIER = LYRIC_REVEAL_POINTS.length - 1;
+// A correct pick from the 4-choice fallback (gave up on free-text first)
+// earns a flat consolation score, the same across every type — it reflects
+// recognition, not recall, so it doesn't scale with how hard the type is.
+const CHOICE_FALLBACK_POINTS = 20;
 
 async function fetchChoices(q) {
   const res = await fetch('/api/quiz/choices', {
@@ -23,7 +38,9 @@ async function fetchChoices(q) {
 }
 
 export default function QuizPage({ songTitles }) {
+  const [needsOnboarding, setNeedsOnboarding] = useState(null); // null = still checking
   const [questions, setQuestions] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [choices, setChoices] = useState(null);
@@ -35,10 +52,20 @@ export default function QuizPage({ songTitles }) {
   const [lyricLines, setLyricLines] = useState(null);
 
   useEffect(() => {
-    fetch('/api/quiz/questions?count=30')
+    fetch('/api/user-songs')
       .then((r) => r.json())
-      .then(setQuestions);
+      .then(({ song_ids }) => setNeedsOnboarding(song_ids.length === 0));
   }, []);
+
+  useEffect(() => {
+    if (needsOnboarding !== false) return;
+    fetch(`/api/quiz/questions?count=${SESSION_LENGTH}`)
+      .then((r) => r.json())
+      .then(({ session_id, questions }) => {
+        setSessionId(session_id);
+        setQuestions(questions);
+      });
+  }, [needsOnboarding]);
 
   const q = questions ? questions[index] : null;
   const isForceChoice = q && FORCE_CHOICE_TYPES.has(q.type);
@@ -51,6 +78,15 @@ export default function QuizPage({ songTitles }) {
     }
   }, [q?.id]);
 
+  if (needsOnboarding === null) return <p>Loading...</p>;
+  if (needsOnboarding) {
+    return (
+      <p>
+        You haven't picked any songs to be quizzed on yet. Head to the <Link to="/songs">Songs</Link> tab and check
+        off the ones you want — you can always add more later.
+      </p>
+    );
+  }
   if (questions === null) return <p>Loading questions...</p>;
   if (questions.length === 0) {
     return (
@@ -105,6 +141,7 @@ export default function QuizPage({ songTitles }) {
       question_type: q.type,
       question_id: q.id,
       song_id: q.song_id,
+      session_id: sessionId,
       prompt: q.prompt,
       correct_answer: q.correct_answer,
       user_answer: userAnswer,
@@ -128,11 +165,8 @@ export default function QuizPage({ songTitles }) {
 
   function submitFreeAnswer() {
     if (!answer.trim()) return;
-    const wasCorrect = normalize(answer) === normalize(q.correct_answer);
-    // Once the 4 choices are shown, the free-text input is hidden (see
-    // render below) — there's no path to reach this with choices already
-    // revealed, so full/tiered credit is always the right call here.
-    const points = wasCorrect ? (q.type === 'lyric' ? LYRIC_REVEAL_POINTS[lyricTier] : 5) : 0;
+    const wasCorrect = answerMatches(answer, q.correct_answer);
+    const points = wasCorrect ? (q.type === 'lyric' ? LYRIC_REVEAL_POINTS[lyricTier] : pointsForType(q.type)) : 0;
     recordAttempt({ userAnswer: answer, mode: 'free', wasCorrect, points });
   }
 
@@ -154,12 +188,14 @@ export default function QuizPage({ songTitles }) {
     setSelectedChoice(choice);
     const wasCorrect = choice === q.correct_answer;
     // Force-choice types have no free-text path to fall back from, so a
-    // correct pick here is the primary signal of knowing it, not a guess.
+    // correct pick here is the primary signal of knowing it, not a guess —
+    // full credit. A regular choice-fallback (gave up on free-text first)
+    // earns the flat consolation score instead.
     recordAttempt({
       userAnswer: choice,
       mode: isForceChoice ? 'free' : 'choice',
       wasCorrect,
-      points: wasCorrect ? (isForceChoice ? 5 : 2) : 0,
+      points: wasCorrect ? (isForceChoice ? pointsForType(q.type) : CHOICE_FALLBACK_POINTS) : 0,
     });
   }
 

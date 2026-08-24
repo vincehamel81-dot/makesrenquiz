@@ -6,12 +6,19 @@ export function songRow(id) {
   return db.prepare('SELECT * FROM songs WHERE id = ?').get(id);
 }
 
-// Session composition, locked to fixed percentages per the user's spec —
-// mostly song-ID and lyric-ID, with everything else (theme, follow-up,
-// album, collaborator, bio, reference) sharing a thin slice.
-const BUCKET_TARGET = { audio: 0.6, lyric: 0.38, other: 0.02 };
+// Session composition. Defaults match the original fixed split; a user can
+// override via user_preferences (see PUT /api/preferences). "trivia" covers
+// everything that isn't audio/lyric: theme, follow-up, album, collaborator,
+// bio, reference.
+const DEFAULT_BUCKET_TARGET = { audio: 0.6, lyric: 0.38, trivia: 0.02 };
 function bucketOf(type) {
-  return type === 'audio' ? 'audio' : type === 'lyric' ? 'lyric' : 'other';
+  return type === 'audio' ? 'audio' : type === 'lyric' ? 'lyric' : 'trivia';
+}
+
+function bucketTargetFor(userId) {
+  const prefs = db.prepare('SELECT audio_pct, lyric_pct, trivia_pct FROM user_preferences WHERE user_id = ?').get(userId);
+  if (!prefs) return DEFAULT_BUCKET_TARGET;
+  return { audio: prefs.audio_pct / 100, lyric: prefs.lyric_pct / 100, trivia: prefs.trivia_pct / 100 };
 }
 
 function hydrate(row) {
@@ -61,14 +68,21 @@ function hydrate(row) {
   }
 }
 
-export function answerDomain(type) {
+export function answerDomain(type, userId) {
   switch (type) {
     case 'audio':
     case 'lyric':
     case 'theme':
     case 'follow-up':
     case 'reference':
-      return db.prepare('SELECT title FROM songs ORDER BY title').all().map((r) => r.title);
+      // Distractors must come from songs the user actually checked — an
+      // unfamiliar title is an instant tell, not a real distractor.
+      return db
+        .prepare(
+          `SELECT s.title FROM songs s JOIN user_songs us ON us.song_id = s.id AND us.user_id = ? ORDER BY s.title`
+        )
+        .all(userId)
+        .map((r) => r.title);
     case 'album':
       return db.prepare('SELECT name FROM albums ORDER BY name').all().map((r) => r.name);
     case 'collaborator':
@@ -93,22 +107,28 @@ function shuffle(arr) {
   return a;
 }
 
-export function buildChoices(type, correctAnswer, questionId) {
+export function buildChoices(type, correctAnswer, questionId, userId) {
   if (type === 'bio' && questionId) {
     const q = db.prepare('SELECT bio_fact_id FROM questions WHERE id = ?').get(questionId);
     const fact = q?.bio_fact_id && db.prepare('SELECT options FROM bio_facts WHERE id = ?').get(q.bio_fact_id);
     if (fact?.options) return shuffle([correctAnswer, ...JSON.parse(fact.options)]);
   }
-  const domain = answerDomain(type).filter((a) => a !== correctAnswer);
+  const domain = answerDomain(type, userId).filter((a) => a !== correctAnswer);
   const distractors = shuffle(domain).slice(0, 3);
   return shuffle([correctAnswer, ...distractors]);
 }
 
 // Adaptive selection: eligible rows (pending or active, and structurally complete)
 // weighted by type priority * per-row weight, damped by how often/recently asked
-// so the same clip/line doesn't come up again and again.
-function eligibleRows() {
-  return db
+// so the same clip/line doesn't come up again and again. Scoped to a user's
+// checked songs: audio/lyric rows require the song to be checked; trivia-bucket
+// rows are eligible if they're song-agnostic (song_id NULL, e.g. general Ren
+// bio facts) or their song is checked.
+function eligibleRows(userId) {
+  const checkedIds = new Set(
+    db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(userId).map((r) => r.song_id)
+  );
+  const rows = db
     .prepare(
       `SELECT * FROM questions
        WHERE status IN ('pending','active')
@@ -116,6 +136,10 @@ function eligibleRows() {
          AND (type != 'lyric' OR start_line_no IS NOT NULL)`
     )
     .all();
+  return rows.filter((row) => {
+    if (row.type === 'audio' || row.type === 'lyric') return checkedIds.has(row.song_id);
+    return row.song_id === null || checkedIds.has(row.song_id);
+  });
 }
 
 function recencyFactor(row) {
@@ -152,8 +176,8 @@ function pickWeighted(rows, n, usedIds) {
 }
 
 // Largest-remainder rounding so bucket targets always sum to exactly `count`.
-function bucketTargets(count) {
-  const raw = Object.entries(BUCKET_TARGET).map(([bucket, pct]) => [bucket, pct * count]);
+function bucketTargets(count, bucketTarget) {
+  const raw = Object.entries(bucketTarget).map(([bucket, pct]) => [bucket, pct * count]);
   const targets = {};
   let allocated = 0;
   for (const [bucket, r] of raw) {
@@ -170,17 +194,18 @@ function bucketTargets(count) {
   return targets;
 }
 
-export function generateSession(count = 30) {
-  const rows = eligibleRows();
+export function generateSession(count = 30, userId) {
+  const rows = eligibleRows(userId);
   if (rows.length === 0) return [];
 
-  const byBucket = { audio: [], lyric: [], other: [] };
+  const byBucket = { audio: [], lyric: [], trivia: [] };
   for (const row of rows) byBucket[bucketOf(row.type)].push(row);
 
-  const targets = bucketTargets(count);
+  const bucketTarget = bucketTargetFor(userId);
+  const targets = bucketTargets(count, bucketTarget);
   const usedIds = new Set();
   let selected = [];
-  for (const bucket of Object.keys(BUCKET_TARGET)) {
+  for (const bucket of Object.keys(bucketTarget)) {
     selected.push(...pickWeighted(byBucket[bucket], targets[bucket], usedIds));
   }
 

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { db } from './db.js';
 import { generateSession, buildChoices, markAsked, randomTriviaForSong } from './questionTypes.js';
@@ -8,11 +9,20 @@ import { applyFeedback } from './feedback.js';
 import { rebuildLyricQuestions } from './lyricQuestions.js';
 import { currentUserId } from './auth.js';
 
+// Standard quiz session length — also what a session needs to hit to be
+// leaderboard-eligible (see GET /api/leaderboard). Mirrored on the client
+// (QuizPage.jsx's SESSION_LENGTH) for the initial fetch.
+const SESSION_LENGTH = 25;
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use('/audio', express.static(path.join(__dirname, '..', 'public', 'audio')));
+// AUDIO_DIR lets a host with a persistent disk (e.g. Render) serve clips
+// from a mounted volume instead of the local repo checkout; unset in dev
+// and by the local fetch/slice pipeline (tools/fetchAudio.js), which always
+// writes to public/audio regardless of where this serves from.
+app.use('/audio', express.static(process.env.AUDIO_DIR || path.join(__dirname, '..', 'public', 'audio')));
 
 // Song titles for autocomplete, or (with ?stats=1) the enriched list for the
 // browsable Songs page: lyric/clip/easter-egg counts so you can see at a
@@ -24,21 +34,133 @@ app.get('/api/songs', (req, res) => {
   const userId = currentUserId(req);
   const songs = db
     .prepare(
-      `SELECT s.id, s.title, s.slug, s.youtube_url, a.name as album_name,
+      `SELECT s.id, s.title, s.slug, s.youtube_url, a.name as album_name, a.release_date as album_release_date,
               COALESCE((SELECT rating FROM user_song_ratings r WHERE r.song_id = s.id AND r.user_id = ?), 0) as rating,
+              EXISTS(SELECT 1 FROM user_songs us WHERE us.song_id = s.id AND us.user_id = ?) as known,
               (SELECT COUNT(*) FROM lyrics_lines ll WHERE ll.song_id = s.id AND ll.is_header = 0) as lyricLineCount,
               (SELECT COUNT(*) FROM questions q WHERE q.song_id = s.id AND q.type = 'audio' AND q.status != 'retired') as clipCount,
               (SELECT COUNT(*) FROM easter_eggs e WHERE e.song_id = s.id AND e.deleted = 0) as easterEggCount
        FROM songs s LEFT JOIN albums a ON a.id = s.album_id ORDER BY s.title`
     )
-    .all(userId);
-  res.json(songs);
+    .all(userId, userId);
+  res.json(songs.map((s) => ({ ...s, known: !!s.known })));
 });
 
-// A fresh batch of quiz questions, adaptively sampled from the question bank
+function slugify(title) {
+  return title
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// Add a new song. Auto-checked for the creator, since adding it here means
+// you want to be quizzed on it — though it won't produce any audio/lyric
+// questions until the data pipeline (tools/) processes it.
+app.post('/api/songs', (req, res) => {
+  const title = (req.body.title || '').trim();
+  if (!title) return res.status(400).json({ error: 'title required' });
+  const slug = slugify(title);
+  if (!slug) return res.status(400).json({ error: 'could not derive a slug from title' });
+  if (db.prepare('SELECT 1 FROM songs WHERE slug = ?').get(slug)) {
+    return res.status(409).json({ error: 'a song with this title (or a very similar one) already exists' });
+  }
+
+  let album_id = null;
+  const albumName = (req.body.album || '').trim();
+  if (albumName) {
+    db.prepare('INSERT INTO albums (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(albumName);
+    album_id = db.prepare('SELECT id FROM albums WHERE name = ?').get(albumName).id;
+  }
+  const collaborators = Array.isArray(req.body.collaborators)
+    ? req.body.collaborators.map((c) => c.trim()).filter(Boolean)
+    : [];
+  const youtube_url = (req.body.youtube_url || '').trim() || null;
+
+  try {
+    const info = db
+      .prepare(
+        `INSERT INTO songs (title, slug, album_id, collaborators, themes, youtube_url) VALUES (?, ?, ?, ?, '[]', ?)`
+      )
+      .run(title, slug, album_id, JSON.stringify(collaborators), youtube_url);
+    db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
+      currentUserId(req),
+      info.lastInsertRowid
+    );
+    res.status(201).json({ id: info.lastInsertRowid, slug });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Which songs the current user has checked off as "known" / wants quizzed on.
+// An empty list is the signal the Quiz page uses to show the onboarding gate.
+app.get('/api/user-songs', (req, res) => {
+  const songIds = db
+    .prepare('SELECT song_id FROM user_songs WHERE user_id = ?')
+    .all(currentUserId(req))
+    .map((r) => r.song_id);
+  res.json({ song_ids: songIds });
+});
+
+app.put('/api/user-songs/:songId', (req, res) => {
+  db.prepare('INSERT OR IGNORE INTO user_songs (user_id, song_id) VALUES (?, ?)').run(
+    currentUserId(req),
+    Number(req.params.songId)
+  );
+  res.json({ ok: true });
+});
+
+app.delete('/api/user-songs/:songId', (req, res) => {
+  db.prepare('DELETE FROM user_songs WHERE user_id = ? AND song_id = ?').run(
+    currentUserId(req),
+    Number(req.params.songId)
+  );
+  res.json({ ok: true });
+});
+
+const DEFAULT_PREFERENCES = { audio_pct: 60, lyric_pct: 38, trivia_pct: 2 };
+
+// Your audio/lyric/trivia quiz mix. No saved row yet just means "use the
+// defaults" — same pattern as ratings, nothing is written until you save.
+app.get('/api/preferences', (req, res) => {
+  const prefs = db
+    .prepare('SELECT audio_pct, lyric_pct, trivia_pct FROM user_preferences WHERE user_id = ?')
+    .get(currentUserId(req));
+  res.json(prefs ?? DEFAULT_PREFERENCES);
+});
+
+app.put('/api/preferences', (req, res) => {
+  const audio_pct = Number(req.body.audio_pct);
+  const lyric_pct = Number(req.body.lyric_pct);
+  const trivia_pct = Number(req.body.trivia_pct);
+  if (![audio_pct, lyric_pct, trivia_pct].every(Number.isFinite)) {
+    return res.status(400).json({ error: 'audio_pct, lyric_pct, trivia_pct (numbers) required' });
+  }
+  if (audio_pct + lyric_pct + trivia_pct !== 100) {
+    return res.status(400).json({ error: 'audio_pct + lyric_pct + trivia_pct must sum to 100' });
+  }
+  db.prepare(
+    `INSERT INTO user_preferences (user_id, audio_pct, lyric_pct, trivia_pct) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET audio_pct = excluded.audio_pct, lyric_pct = excluded.lyric_pct, trivia_pct = excluded.trivia_pct`
+  ).run(currentUserId(req), audio_pct, lyric_pct, trivia_pct);
+  res.json({ ok: true, audio_pct, lyric_pct, trivia_pct });
+});
+
+// A fresh batch of quiz questions, adaptively sampled from the question bank,
+// scoped to the user's checked songs and their audio/lyric/trivia ratio.
+// Also opens a quiz_sessions row, snapshotting how many songs were checked
+// at the time — History groups by this, and the Leaderboard uses it to
+// weight completed sessions.
 app.get('/api/quiz/questions', (req, res) => {
-  const count = Math.min(Number(req.query.count) || 30, 100);
-  res.json(generateSession(count));
+  const count = Math.min(Number(req.query.count) || SESSION_LENGTH, 100);
+  const userId = currentUserId(req);
+  const activeSongCount = db.prepare('SELECT COUNT(*) as n FROM user_songs WHERE user_id = ?').get(userId).n;
+  const { lastInsertRowid: sessionId } = db
+    .prepare('INSERT INTO quiz_sessions (user_id, requested_count, active_song_count) VALUES (?, ?, ?)')
+    .run(userId, count, activeSongCount);
+  res.json({ session_id: sessionId, questions: generateSession(count, userId) });
 });
 
 // Multiple-choice reveal for a given question
@@ -46,7 +168,7 @@ app.post('/api/quiz/choices', (req, res) => {
   const { type, correct_answer, question_id } = req.body;
   if (!type || !correct_answer) return res.status(400).json({ error: 'type and correct_answer required' });
   try {
-    res.json(buildChoices(type, correct_answer, question_id));
+    res.json(buildChoices(type, correct_answer, question_id, currentUserId(req)));
   } catch {
     res.status(400).json({ error: 'unknown question type' });
   }
@@ -54,13 +176,14 @@ app.post('/api/quiz/choices', (req, res) => {
 
 // Record an attempt
 app.post('/api/attempts', (req, res) => {
-  const { question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points } =
+  const { question_type, question_id, song_id, session_id, prompt, correct_answer, user_answer, mode, was_correct, points } =
     req.body;
   db.prepare(
-    `INSERT INTO quiz_attempts (user_id, question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO quiz_attempts (user_id, session_id, question_type, question_id, song_id, prompt, correct_answer, user_answer, mode, was_correct, points)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     currentUserId(req),
+    session_id ?? null,
     question_type,
     question_id ?? null,
     song_id ?? null,
@@ -107,11 +230,15 @@ app.get('/api/questions/:id/lyric-lines', (req, res) => {
 const CORRECT_WEIGHTED = `SUM(CASE WHEN was_correct = 1 THEN (CASE WHEN mode = 'choice' THEN 0.5 ELSE 1.0 END) ELSE 0 END)`;
 app.get('/api/history', (req, res) => {
   const userId = currentUserId(req);
+  // active_song_count comes from the session an attempt belongs to; attempts
+  // from before session tracking existed (session_id NULL) group together
+  // under a null count rather than being dropped.
   const daily = db
     .prepare(
-      `SELECT date(played_at) as day, SUM(points) as points, COUNT(*) as attempts,
-              ${CORRECT_WEIGHTED} as correct
-       FROM quiz_attempts WHERE user_id = ? GROUP BY day ORDER BY day`
+      `SELECT date(a.played_at) as day, s.active_song_count as active_song_count,
+              SUM(a.points) as points, COUNT(*) as attempts, ${CORRECT_WEIGHTED} as correct
+       FROM quiz_attempts a LEFT JOIN quiz_sessions s ON s.id = a.session_id
+       WHERE a.user_id = ? GROUP BY day, active_song_count ORDER BY day`
     )
     .all(userId);
   const byType = db
@@ -245,6 +372,7 @@ app.delete('/api/songs/:slug', (req, res) => {
     ).run(id);
     db.prepare('DELETE FROM easter_eggs WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM user_song_ratings WHERE song_id = ?').run(id);
+    db.prepare('DELETE FROM user_songs WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM questions WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM lyrics_lines WHERE song_id = ?').run(id);
     db.prepare('DELETE FROM songs WHERE id = ?').run(id);
@@ -280,6 +408,23 @@ app.put('/api/songs/:slug/title', (req, res) => {
     return res.status(400).json({ error: err.message });
   }
   res.json({ ok: true, title });
+});
+
+// Assign (or create) the album a song belongs to. Lets a new collab album
+// like "Busking Sessions (The Big Push)" be created just by typing its name
+// on any of its songs, same as how titles get renamed one at a time.
+app.put('/api/songs/:slug/album', (req, res) => {
+  const song = db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+  if (!song) return res.status(404).json({ error: 'not found' });
+  const name = (req.body.album || '').trim();
+  if (!name) {
+    db.prepare('UPDATE songs SET album_id = NULL WHERE id = ?').run(song.id);
+    return res.json({ ok: true, album: null });
+  }
+  db.prepare('INSERT INTO albums (name) VALUES (?) ON CONFLICT(name) DO NOTHING').run(name);
+  const album = db.prepare('SELECT id FROM albums WHERE name = ?').get(name);
+  db.prepare('UPDATE songs SET album_id = ? WHERE id = ?').run(album.id, song.id);
+  res.json({ ok: true, album: name });
 });
 
 app.put('/api/songs/:slug/youtube-url', (req, res) => {
@@ -342,12 +487,16 @@ app.get('/api/stats/songs', (req, res) => {
   const ratings = new Map(
     db.prepare('SELECT song_id, rating FROM user_song_ratings WHERE user_id = ?').all(userId).map((r) => [r.song_id, r.rating])
   );
+  const knownIds = new Set(
+    db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(userId).map((r) => r.song_id)
+  );
   const songs = db.prepare('SELECT id, title, slug FROM songs ORDER BY title').all();
   res.json(
     songs.map((s) => ({
       title: s.title,
       slug: s.slug,
       rating: ratings.get(s.id) ?? 0,
+      known: knownIds.has(s.id),
       ...(bySong.get(s.id) ?? {
         lyrics: { correct: 0, total: 0 },
         video: { correct: 0, total: 0 },
@@ -356,6 +505,51 @@ app.get('/api/stats/songs', (req, res) => {
     }))
   );
 });
+
+// Leaderboard: (sum of points earned) * (songs checked / 2), from each
+// user's best COMPLETED session of the standard SESSION_LENGTH only — a
+// session only counts once all of its questions were actually answered, so
+// shorter/partial sessions don't count here (they still show up in that
+// user's own History, just not here). Points themselves already carry the
+// per-type constants (see QuizPage.jsx's TYPE_POINTS), so this is just
+// scaling a completed session's total by how large a pool it was drawn from.
+app.get('/api/leaderboard', (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT s.user_id as user_id, u.name as name, s.id as session_id, s.active_song_count as active_song_count,
+              SUM(a.points) as session_points, COUNT(a.id) as answered
+       FROM quiz_sessions s
+       JOIN users u ON u.id = s.user_id
+       JOIN quiz_attempts a ON a.session_id = s.id
+       WHERE s.requested_count = ?
+       GROUP BY s.id
+       HAVING answered = ?`
+    )
+    .all(SESSION_LENGTH, SESSION_LENGTH);
+
+  const best = new Map();
+  for (const r of rows) {
+    const score = Math.round((r.active_song_count / 2) * r.session_points);
+    const prev = best.get(r.user_id);
+    if (!prev || score > prev.score) {
+      best.set(r.user_id, { user_id: r.user_id, name: r.name, score, active_song_count: r.active_song_count, points: r.session_points });
+    }
+  }
+
+  res.json([...best.values()].sort((a, b) => b.score - a.score));
+});
+
+// Serve the built frontend when it exists (production hosts like Render run
+// this as the only process, with no separate Vite dev server to fall back
+// on). In local dev this is a no-op — the browser talks to Vite's dev
+// server instead, which proxies only /api and /audio here (vite.config.js).
+const distDir = path.join(__dirname, '..', 'dist');
+if (existsSync(distDir)) {
+  app.use(express.static(distDir));
+  // Plain middleware, not a '*' route pattern — Express 5's path-to-regexp
+  // no longer accepts a bare '*' (needs a named wildcard like '/*splat').
+  app.use((req, res) => res.sendFile(path.join(distDir, 'index.html')));
+}
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`renquiz API listening on http://localhost:${PORT}`));

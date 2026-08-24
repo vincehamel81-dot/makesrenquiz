@@ -6,6 +6,8 @@ import SongKnowledgePage from './pages/SongKnowledgePage';
 import LookupPage from './pages/LookupPage';
 import SongsListPage from './pages/SongsListPage';
 import SongDetailPage from './pages/SongDetailPage';
+import ProfilePage from './pages/ProfilePage';
+import LeaderboardPage from './pages/LeaderboardPage';
 import './App.css';
 
 const TABS = [
@@ -14,10 +16,13 @@ const TABS = [
   { to: '/history', label: 'History' },
   { to: '/song-knowledge', label: 'Song Knowledge' },
   { to: '/lookup', label: 'Lyric lookup' },
+  { to: '/leaderboard', label: 'Leaderboard' },
+  { to: '/profile', label: 'Profile' },
 ];
 
 export default function App() {
   const [songTitles, setSongTitles] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/songs')
@@ -27,13 +32,24 @@ export default function App() {
 
   return (
     <div className="app">
-      <nav className="tabs">
-        {TABS.map(({ to, label, end }) => (
-          <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')}>
-            {label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="topbar">
+        <button className="hamburger" onClick={() => setMenuOpen((v) => !v)} aria-label="Toggle menu">
+          ☰
+        </button>
+        <nav className={`tabs${menuOpen ? ' open' : ''}`}>
+          {TABS.map(({ to, label, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) => (isActive ? 'active' : '')}
+              onClick={() => setMenuOpen(false)}
+            >
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
       <main>
         <Routes>
           <Route path="/" element={<QuizPage songTitles={songTitles} />} />
@@ -42,6 +58,8 @@ export default function App() {
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/song-knowledge" element={<SongKnowledgePage />} />
           <Route path="/lookup" element={<LookupPage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Routes>
       </main>
     </div>

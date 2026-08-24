@@ -23,14 +23,16 @@ export default function HistoryPage() {
         <thead>
           <tr>
             <th>Day</th>
+            <th># Songs</th>
             <th>Points</th>
             <th>Accuracy</th>
           </tr>
         </thead>
         <tbody>
           {data.daily.map((d) => (
-            <tr key={d.day}>
+            <tr key={`${d.day}-${d.active_song_count}`}>
               <td>{d.day}</td>
+              <td>{d.active_song_count ?? '—'}</td>
               <td>{d.points}</td>
               <td>
                 {d.correct}/{d.attempts} ({Math.round((100 * d.correct) / d.attempts)}%)

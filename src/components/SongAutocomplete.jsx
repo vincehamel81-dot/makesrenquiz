@@ -9,7 +9,10 @@ export default function SongAutocomplete({ songTitles, value, onChange, onSubmit
   const matches = useMemo(() => {
     const q = normalize(value);
     if (!q) return [];
-    return songTitles.filter((t) => normalize(t).startsWith(q)).slice(0, 8);
+    // Substring match, not just prefix — titles like "Earned It / Man's
+    // World / Falling" need to be findable by any of their component names,
+    // not just the first word.
+    return songTitles.filter((t) => normalize(t).includes(q)).slice(0, 8);
   }, [value, songTitles]);
 
   useEffect(() => setHighlight(0), [value]);

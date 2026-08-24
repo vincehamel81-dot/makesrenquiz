@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, '..', 'data', 'renquiz.db');
+// DB_PATH lets a host with a persistent disk (e.g. Render) point this at a
+// mounted volume instead of the local repo checkout; unset in dev, so
+// nothing changes locally.
+const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'renquiz.db');
 
 export const db = new DatabaseSync(dbPath);
 db.exec('PRAGMA foreign_keys = ON');

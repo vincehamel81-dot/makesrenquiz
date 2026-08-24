@@ -28,3 +28,8 @@ dist-ssr
 /audio_raw/
 /public/audio/
 /lyrics.raw/
+
+# Secrets
+.env
+.env.*
+!.env.example

@@ -37,6 +37,37 @@ CREATE TABLE IF NOT EXISTS user_song_ratings (
   PRIMARY KEY (user_id, song_id)
 );
 
+-- Which songs a user wants to be quizzed on. Presence = checked; an empty
+-- set for a user is the "never onboarded" signal the quiz gate checks for.
+CREATE TABLE IF NOT EXISTS user_songs (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  song_id INTEGER NOT NULL REFERENCES songs(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, song_id)
+);
+
+-- Per-user audio/lyric/trivia quiz mix. Missing row = use the default
+-- (60/38/2, matching the previous global constant) — only created once a
+-- user actually saves a custom ratio.
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id),
+  audio_pct INTEGER NOT NULL,
+  lyric_pct INTEGER NOT NULL,
+  trivia_pct INTEGER NOT NULL,
+  CHECK (audio_pct + lyric_pct + trivia_pct = 100)
+);
+
+-- One row per "Start Quiz" click — the snapshot a session was generated
+-- under, so History can group by it and the Leaderboard can tell whether a
+-- session was actually completed in full.
+CREATE TABLE IF NOT EXISTS quiz_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  requested_count INTEGER NOT NULL,
+  active_song_count INTEGER NOT NULL,
+  started_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS lyrics_lines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   song_id INTEGER NOT NULL REFERENCES songs(id),
@@ -105,6 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_easter_eggs_song ON easter_eggs(song_id);
 CREATE TABLE IF NOT EXISTS quiz_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL DEFAULT 1 REFERENCES users(id),
+  session_id INTEGER REFERENCES quiz_sessions(id),
   played_at TEXT NOT NULL DEFAULT (datetime('now')),
   question_type TEXT NOT NULL,
   question_id INTEGER REFERENCES questions(id),

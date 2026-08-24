@@ -38,6 +38,8 @@ export default function SongDetailPage() {
   const [titleDraft, setTitleDraft] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
   const [titleError, setTitleError] = useState('');
+  const [albumDraft, setAlbumDraft] = useState('');
+  const [savingAlbum, setSavingAlbum] = useState(false);
 
   function load() {
     setDetail(null);
@@ -60,6 +62,10 @@ export default function SongDetailPage() {
   useEffect(() => {
     if (detail) setTitleDraft(detail.title);
   }, [detail?.title]);
+
+  useEffect(() => {
+    if (detail) setAlbumDraft(detail.album_name ?? '');
+  }, [detail?.album_name]);
 
   if (!detail) return <p>Loading...</p>;
 
@@ -104,6 +110,17 @@ export default function SongDetailPage() {
     });
     setDetail((d) => ({ ...d, youtube_url: urlDraft.trim() || null }));
     setSavingUrl(false);
+  }
+
+  async function saveAlbum() {
+    setSavingAlbum(true);
+    await fetch(`/api/songs/${slug}/album`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ album: albumDraft }),
+    });
+    setDetail((d) => ({ ...d, album_name: albumDraft.trim() || null }));
+    setSavingAlbum(false);
   }
 
   function startEditing() {
@@ -192,7 +209,21 @@ export default function SongDetailPage() {
           </button>
         </h2>
       )}
-      {detail.album_name && <p className="song-meta">Album: {detail.album_name}</p>}
+      <div className="rating-field">
+        <label>
+          Album:
+          <input
+            type="text"
+            placeholder="No album"
+            value={albumDraft}
+            onChange={(e) => setAlbumDraft(e.target.value)}
+            className="youtube-url-input"
+          />
+        </label>
+        <button onClick={saveAlbum} disabled={savingAlbum || albumDraft === (detail.album_name ?? '')}>
+          {savingAlbum ? 'Saving...' : 'Save'}
+        </button>
+      </div>
 
       <div className="video-embed-block">
         <div className="rating-field">

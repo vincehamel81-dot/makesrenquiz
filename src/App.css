@@ -28,6 +28,47 @@
   border-bottom: 2px solid currentColor;
 }
 
+.hamburger {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .hamburger {
+    display: block;
+    background: none;
+    border: 1px solid var(--border, #333);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 1.1rem;
+    line-height: 1.4;
+    cursor: pointer;
+    color: inherit;
+    margin-bottom: 12px;
+  }
+
+  .tabs {
+    display: none;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0;
+    margin-bottom: 16px;
+  }
+
+  .tabs.open {
+    display: flex;
+  }
+
+  .tabs a {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border, #333);
+  }
+
+  .tabs a.active {
+    border-bottom: 1px solid var(--border, #333);
+    background: var(--accent-bg);
+  }
+}
+
 .quiz .prompt {
   font-size: 1.2rem;
   margin: 16px 0;
@@ -139,6 +180,47 @@
 .btn-secondary:hover:not(:disabled) {
   border-color: var(--accent-border);
   background: var(--accent-bg);
+}
+
+.btn-secondary.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.album-groups {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.album-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.album-group-songs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.checklist-table-row {
+  grid-template-columns: 28px 1fr 90px;
+  cursor: pointer;
 }
 
 .choices {
@@ -288,7 +370,13 @@ a.data-table-row,
 }
 
 .songs-table-row {
-  grid-template-columns: 1fr 64px 56px 56px 64px 40px;
+  grid-template-columns: 32px 1fr 64px 56px 56px 64px 40px;
+}
+
+.songs-list-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .knowledge-table-row {
@@ -415,6 +503,28 @@ th.sortable:hover {
   pointer-events: none;
 }
 
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+.trend-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
 .trend-tooltip {
   margin-top: 8px;
   padding: 8px 10px;
@@ -512,6 +622,37 @@ th.sortable:hover {
 .rating-field input[type='number'] {
   width: 6ch;
   padding: 6px 8px;
+}
+
+.ratio-fields {
+  display: flex;
+  gap: 20px;
+  margin: 8px 0 12px;
+}
+
+.ratio-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.ratio-fields input[type='number'] {
+  width: 6ch;
+  padding: 6px 8px;
+}
+
+.ratio-total-ok {
+  opacity: 0.7;
+}
+
+.ratio-total-bad {
+  color: #c33;
+}
+
+.save-confirm {
+  opacity: 0.7;
+  margin-left: 8px;
 }
 
 .song-detail-topbar {

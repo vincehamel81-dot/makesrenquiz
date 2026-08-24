@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePersistedState } from '../lib/usePersistedState';
 
 const COLUMNS = [
   { key: 'title', label: 'Song' },
@@ -28,6 +29,7 @@ export default function SongKnowledgePage() {
   const [songs, setSongs] = useState(null);
   const [sortKey, setSortKey] = useState('title');
   const [sortDir, setSortDir] = useState(1);
+  const [hideUnchecked, setHideUnchecked] = usePersistedState('renquiz.hideUnchecked', true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -36,9 +38,11 @@ export default function SongKnowledgePage() {
       .then(setSongs);
   }, []);
 
+  const anyKnown = songs?.some((s) => s.known) ?? false;
+
   const sorted = useMemo(() => {
     if (!songs) return [];
-    const arr = [...songs];
+    const arr = hideUnchecked && anyKnown ? songs.filter((s) => s.known) : [...songs];
     arr.sort((a, b) => {
       const va = sortValue(a, sortKey);
       const vb = sortValue(b, sortKey);
@@ -53,7 +57,7 @@ export default function SongKnowledgePage() {
       return 0;
     });
     return arr;
-  }, [songs, sortKey, sortDir]);
+  }, [songs, sortKey, sortDir, hideUnchecked, anyKnown]);
 
   function toggleSort(key) {
     if (key === sortKey) {
@@ -70,6 +74,11 @@ export default function SongKnowledgePage() {
     <div className="song-knowledge">
       <h2>Song Knowledge</h2>
       <p className="song-meta">Click a column header to sort. Click a row to open that song.</p>
+      {anyKnown && (
+        <button className="btn-secondary" onClick={() => setHideUnchecked((v) => !v)}>
+          {hideUnchecked ? 'Show all songs' : 'Show only my songs'}
+        </button>
+      )}
       <div className="data-table">
         <div className="data-table-row knowledge-table-row data-table-header">
           {COLUMNS.map((c) => (
