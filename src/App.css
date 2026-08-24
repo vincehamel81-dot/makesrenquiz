@@ -721,6 +721,11 @@ a.mini-badge {
   color: var(--badge-theory-text);
 }
 
+.badge.category {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
 .rating-field {
   display: flex;
   align-items: center;

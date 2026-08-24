@@ -19,7 +19,14 @@ function isSoundCloudUrl(url) {
   return !!url && /(^|\/\/)(www\.)?soundcloud\.com\//.test(url);
 }
 
-const EMPTY_EGG_FORM = { term: '', description: '', confidence: 'theory', quizzable: false, source_url: '' };
+const EMPTY_EGG_FORM = { term: '', description: '', category: 'easter_egg', confidence: 'theory', quizzable: false, source_url: '' };
+
+const GEM_CATEGORY_LABELS = {
+  easter_egg: 'Easter Egg',
+  reference: 'Reference',
+  wordplay: 'Wordplay',
+  fact: 'Fact',
+};
 
 export default function SongDetailPage() {
   const { slug } = useParams();
@@ -124,7 +131,7 @@ export default function SongDetailPage() {
   }
 
   async function deleteSong() {
-    if (!confirm(`Delete "${detail.title}" permanently? This removes its lyrics, clips, and easter eggs.`)) return;
+    if (!confirm(`Delete "${detail.title}" permanently? This removes its lyrics, clips, and gems.`)) return;
     await fetch(`/api/songs/${slug}`, { method: 'DELETE' });
     navigate('/songs');
   }
@@ -329,13 +336,14 @@ export default function SongDetailPage() {
         </>
       )}
 
-      <h3>Easter eggs</h3>
+      <h3>💎 Gems</h3>
       {detail.easterEggs.length === 0 ? (
         <p>None catalogued yet.</p>
       ) : (
         <ul className="easter-eggs">
           {detail.easterEggs.map((e) => (
             <li key={e.id}>
+              <span className="badge category">{GEM_CATEGORY_LABELS[e.category] ?? e.category}</span>{' '}
               <span className={`badge ${e.confidence}`}>{e.confidence}</span>
               {e.term && <strong> "{e.term}" — </strong>}
               {e.description}
@@ -348,7 +356,7 @@ export default function SongDetailPage() {
                 </>
               )}
               {isAdmin && (
-                <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this easter egg">
+                <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this gem">
                   ✕
                 </button>
               )}
@@ -358,7 +366,7 @@ export default function SongDetailPage() {
       )}
 
       {!isAdmin ? null : !addingEgg ? (
-        <button onClick={() => setAddingEgg(true)}>+ Add easter egg</button>
+        <button onClick={() => setAddingEgg(true)}>+ Add gem</button>
       ) : (
         <form className="egg-form" onSubmit={submitEgg}>
           <input
@@ -379,6 +387,15 @@ export default function SongDetailPage() {
             value={eggForm.source_url}
             onChange={(e) => setEggForm((f) => ({ ...f, source_url: e.target.value }))}
           />
+          <label>
+            <select value={eggForm.category} onChange={(e) => setEggForm((f) => ({ ...f, category: e.target.value }))}>
+              {Object.entries(GEM_CATEGORY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             <select
               value={eggForm.confidence}

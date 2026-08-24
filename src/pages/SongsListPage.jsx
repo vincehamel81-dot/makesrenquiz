@@ -8,7 +8,7 @@ const COLUMNS = [
   { key: 'title', label: 'Title' },
   { key: 'lyrics', label: 'Lyrics' },
   { key: 'clips', label: 'Clips' },
-  { key: 'eggs', label: 'Eggs' },
+  { key: 'eggs', label: 'Gems' },
   { key: 'rating', label: 'Rating' },
   { key: 'yt', label: 'YT' },
 ];
@@ -190,8 +190,8 @@ export default function SongsListPage() {
             <span className={`mini-badge ${s.clipCount > 0 ? 'yes' : 'no'}`} title="Audio clips">
               🎵 {s.clipCount}
             </span>
-            <span className={`mini-badge ${s.easterEggCount > 0 ? 'yes' : 'no'}`} title="Easter eggs">
-              🥚 {s.easterEggCount}
+            <span className={`mini-badge ${s.easterEggCount > 0 ? 'yes' : 'no'}`} title="Gems">
+              💎 {s.easterEggCount}
             </span>
             <span className={`mini-badge ${s.rating > 0 ? 'yes' : 'no'}`} title="Your rating">
               ⭐ {s.rating || '-'}

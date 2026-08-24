@@ -213,7 +213,7 @@ export default function ProfilePage() {
       <h3>My songs</h3>
       <p className="song-meta">
         {knownCount} of {songs.length} songs checked — these are what the Quiz draws from. Browse full song details
-        (lyrics, clips, easter eggs) on the <Link to="/songs">Songs</Link> tab.
+        (lyrics, clips, gems) on the <Link to="/songs">Songs</Link> tab.
       </p>
       <div className="songs-list-controls">
         <button className={`btn-secondary${viewMode === 'album' ? ' active' : ''}`} onClick={() => setViewMode('album')}>

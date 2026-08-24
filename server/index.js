@@ -344,7 +344,9 @@ app.get('/api/songs/:slug/detail', async (req, res) => {
   song.rating = ratingRow?.rating ?? 0;
   const lyrics = await db.prepare('SELECT line_no, text, is_header FROM lyrics_lines WHERE song_id = ? ORDER BY line_no').all(song.id);
   const easterEggs = await db
-    .prepare('SELECT id, term, description, confidence, source_url FROM easter_eggs WHERE song_id = ? AND deleted = 0 ORDER BY id')
+    .prepare(
+      'SELECT id, term, description, category, confidence, source_url FROM easter_eggs WHERE song_id = ? AND deleted = 0 ORDER BY id'
+    )
     .all(song.id);
   const clipRows = await db
     .prepare(
@@ -401,18 +403,27 @@ app.delete('/api/easter-eggs/:id', requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// Manually add an easter egg from the song page.
+// Manually add a gem (easter egg / reference / wordplay / fact) from the song page.
+const GEM_CATEGORIES = new Set(['easter_egg', 'reference', 'wordplay', 'fact']);
 app.post('/api/songs/:slug/easter-eggs', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
-  const { term, description, confidence, quizzable, source_url } = req.body;
+  const { term, description, category, confidence, quizzable, source_url } = req.body;
   if (!description) return res.status(400).json({ error: 'description required' });
   const info = await db
     .prepare(
-      `INSERT INTO easter_eggs (song_id, term, description, confidence, quizzable, source_url)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO easter_eggs (song_id, term, description, category, confidence, quizzable, source_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(song.id, term || null, description, confidence === 'confirmed' ? 'confirmed' : 'theory', quizzable ? 1 : 0, source_url || null);
+    .run(
+      song.id,
+      term || null,
+      description,
+      GEM_CATEGORIES.has(category) ? category : 'easter_egg',
+      confidence === 'confirmed' ? 'confirmed' : 'theory',
+      quizzable ? 1 : 0,
+      source_url || null
+    );
   if (quizzable && term) {
     await db.prepare(`INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`).run(song.id, info.lastInsertRowid);
   }
