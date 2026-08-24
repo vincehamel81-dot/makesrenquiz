@@ -4,6 +4,7 @@
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import { db } from './db.js';
+import { generateUniqueDisplayName } from './lib/randomDisplayName.js';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -29,10 +30,22 @@ export async function findOrCreateUser({ sub, email, name, picture }) {
     return { ...user, google_sub: sub, name, picture_url: picture ?? null };
   }
 
+  const displayName = await generateUniqueDisplayName(async (candidate) => {
+    const existing = await db.prepare('SELECT 1 FROM users WHERE display_name = ? COLLATE NOCASE').get(candidate);
+    return !!existing;
+  });
   const info = await db
-    .prepare(`INSERT INTO users (name, email, google_sub, picture_url, role) VALUES (?, ?, ?, ?, 'user')`)
-    .run(name, email, sub, picture ?? null);
-  return { id: info.lastInsertRowid, name, email, google_sub: sub, role: 'user', picture_url: picture ?? null };
+    .prepare(`INSERT INTO users (name, display_name, email, google_sub, picture_url, role) VALUES (?, ?, ?, ?, ?, 'user')`)
+    .run(name, displayName, email, sub, picture ?? null);
+  return {
+    id: info.lastInsertRowid,
+    name,
+    display_name: displayName,
+    email,
+    google_sub: sub,
+    role: 'user',
+    picture_url: picture ?? null,
+  };
 }
 
 // Role rides in the token itself rather than a per-request DB lookup —

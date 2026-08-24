@@ -3,16 +3,23 @@
 -- (id 1 = vince) is matched by email on his first Google sign-in rather
 -- than getting a second row, so his existing history/ratings/checklist
 -- carry over intact.
+-- name is the real Google account name — never shown to other users.
+-- display_name is the public username shown in the topbar and Leaderboard:
+-- alphanumeric only, 3-15 chars, unique (case-insensitive). Defaults to a
+-- random two-word name at signup (see server/lib/randomDisplayName.js) and
+-- is user-editable from Profile (PUT /api/profile).
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
+  display_name TEXT,
   email TEXT UNIQUE,
   google_sub TEXT,
   role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user')),
   picture_url TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);
-INSERT OR IGNORE INTO users (id, name, email, role) VALUES (1, 'vince', 'vince.hamel81@gmail.com', 'admin');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name ON users(display_name COLLATE NOCASE);
+INSERT OR IGNORE INTO users (id, name, display_name, email, role) VALUES (1, 'vince', 'Vince', 'vince.hamel81@gmail.com', 'admin');
 
 CREATE TABLE IF NOT EXISTS albums (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

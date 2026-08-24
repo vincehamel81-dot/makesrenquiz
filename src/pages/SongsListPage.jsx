@@ -112,9 +112,10 @@ export default function SongsListPage() {
       <div className="songs-list-controls">
         <input type="text" placeholder="Filter songs..." value={filter} onChange={(e) => setFilter(e.target.value)} />
         {anyKnown && (
-          <button className="btn-secondary" onClick={() => setHideUnchecked((v) => !v)}>
-            {hideUnchecked ? 'Show all songs' : 'Show only my songs'}
-          </button>
+          <label className="checkbox-toggle">
+            <input type="checkbox" checked={hideUnchecked} onChange={(e) => setHideUnchecked(e.target.checked)} />
+            Show only my songs
+          </label>
         )}
         {isAdmin && (
           <button className="btn-secondary" onClick={() => setAdding((v) => !v)}>
@@ -122,7 +123,7 @@ export default function SongsListPage() {
           </button>
         )}
       </div>
-      <p className="song-meta">
+      <p className="song-meta song-list-hint">
         Manage which songs you're quizzed on from <Link to="/profile">Profile</Link>.
       </p>
 

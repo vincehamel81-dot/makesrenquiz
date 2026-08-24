@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import SongAutocomplete from '../components/SongAutocomplete';
 import ClipPlayer from '../components/ClipPlayer';
@@ -51,6 +51,7 @@ export default function QuizPage({ songTitles }) {
   const [trivia, setTrivia] = useState(null);
   const [lyricTier, setLyricTier] = useState(0);
   const [lyricLines, setLyricLines] = useState(null);
+  const [expandedType, setExpandedType] = useState(null);
 
   useEffect(() => {
     fetch('/api/user-songs')
@@ -118,17 +119,52 @@ export default function QuizPage({ songTitles }) {
               <th>Type</th>
               <th>Correct</th>
               <th>Points</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {Object.entries(byType).map(([type, s]) => (
-              <tr key={type}>
-                <td>{type}</td>
-                <td>
-                  {s.correct}/{s.attempts}
-                </td>
-                <td>{s.points}</td>
-              </tr>
+              <Fragment key={type}>
+                <tr>
+                  <td>{type}</td>
+                  <td>
+                    {s.correct}/{s.attempts}
+                  </td>
+                  <td>{s.points}</td>
+                  <td>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setExpandedType((t) => (t === type ? null : type))}
+                    >
+                      {expandedType === type ? 'Hide' : 'View details'}
+                    </button>
+                  </td>
+                </tr>
+                {expandedType === type && (
+                  <tr>
+                    <td colSpan={4}>
+                      <div className="attempt-breakdown">
+                        {attempts
+                          .filter((a) => a.question_type === type)
+                          .map((a, i) => (
+                            <div key={i} className={`attempt-row ${a.was_correct ? 'is-correct' : 'is-wrong'}`}>
+                              <span className="attempt-answer">{a.correct_answer}</span>
+                              {a.was_correct ? (
+                                <span className="attempt-status">
+                                  ✓ {a.mode === 'choice' ? 'guessed from choices, ' : ''}+{a.points} pts
+                                </span>
+                              ) : (
+                                <span className="attempt-status">
+                                  ✕ you said "{a.user_answer || '(nothing)'}" — +0 pts
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -299,7 +335,7 @@ export default function QuizPage({ songTitles }) {
               </div>
             ) : (
               <p className={`feedback-text ${reveal.correct ? 'is-correct' : 'is-wrong'}`}>
-                {reveal.correct ? 'Correct!' : `Wrong — answer: ${reveal.correctAnswer}`}
+                {reveal.correct ? '✓ Correct!' : `✕ Wrong — answer: ${reveal.correctAnswer}`}
               </p>
             )}
 

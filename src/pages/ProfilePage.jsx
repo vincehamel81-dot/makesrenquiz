@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePersistedState } from '../lib/usePersistedState';
+import { useAuth } from '../lib/AuthContext';
 
 const NO_ALBUM = 'Singles / Other';
+const DISPLAY_NAME_PATTERN = /^[a-zA-Z0-9]{3,15}$/;
 
 function sortValue(song, key) {
   return key === 'rating' ? song.rating : song.title.toLowerCase();
 }
 
 export default function ProfilePage() {
+  const { user, refresh } = useAuth();
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+  const [nameError, setNameError] = useState('');
+
   const [prefs, setPrefs] = useState(null);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -18,6 +26,10 @@ export default function ProfilePage() {
   const [viewMode, setViewMode] = usePersistedState('renquiz.songsViewMode', 'album'); // 'album' | 'list'
   const [sortKey, setSortKey] = useState('title');
   const [sortDir, setSortDir] = useState(1);
+
+  useEffect(() => {
+    if (user) setNameDraft(user.display_name);
+  }, [user]);
 
   useEffect(() => {
     fetch('/api/preferences')
@@ -72,6 +84,26 @@ export default function ProfilePage() {
     setDraft((d) => ({ ...d, [key]: Math.max(0, Math.min(100, Number(value) || 0)) }));
   }
 
+  async function saveDisplayName() {
+    const trimmed = nameDraft.trim();
+    if (!DISPLAY_NAME_PATTERN.test(trimmed)) return;
+    setSavingName(true);
+    setNameError('');
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: trimmed }),
+    });
+    setSavingName(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setNameError(data.error || 'Failed to save');
+      return;
+    }
+    await refresh();
+    setNameSaved(true);
+  }
+
   async function save() {
     if (!valid) return;
     setSaving(true);
@@ -111,6 +143,32 @@ export default function ProfilePage() {
   return (
     <div className="profile">
       <h2>Profile</h2>
+
+      <h3>Display name</h3>
+      <p className="song-meta">
+        What shows in the topbar and on the Leaderboard — not your real name. 3-15 letters/numbers, no spaces, must
+        be unique. Defaults to a random placeholder; change it to whatever you'd like.
+      </p>
+      <div className="rating-field">
+        <input
+          type="text"
+          maxLength={15}
+          value={nameDraft}
+          onChange={(e) => {
+            setNameDraft(e.target.value.replace(/[^a-zA-Z0-9]/g, ''));
+            setNameSaved(false);
+            setNameError('');
+          }}
+        />
+        <button
+          onClick={saveDisplayName}
+          disabled={savingName || !DISPLAY_NAME_PATTERN.test(nameDraft) || nameDraft === user?.display_name}
+        >
+          {savingName ? 'Saving...' : 'Save'}
+        </button>
+        {nameSaved && <span className="save-confirm"> Saved.</span>}
+        {nameError && <span className="title-error"> {nameError}</span>}
+      </div>
 
       <h3>Quiz mix</h3>
       <p className="song-meta">

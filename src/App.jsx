@@ -10,7 +10,9 @@ import ProfilePage from './pages/ProfilePage';
 import LeaderboardPage from './pages/LeaderboardPage';
 import RequireAuth from './components/RequireAuth';
 import GoogleSignInButton from './components/GoogleSignInButton';
+import ThemeToggle from './components/ThemeToggle';
 import { AuthProvider, useAuth } from './lib/AuthContext';
+import { ThemeProvider } from './lib/ThemeContext';
 import './App.css';
 
 const TABS = [
@@ -29,10 +31,7 @@ function AccountControl() {
   if (!user) return <GoogleSignInButton />;
   return (
     <div className="account-control">
-      <span>
-        {user.name}
-        {user.role === 'admin' && <span className="mini-badge yes"> admin</span>}
-      </span>
+      <span>{user.display_name}</span>
       <button className="btn-secondary" onClick={logout}>
         Sign out
       </button>
@@ -51,7 +50,8 @@ export default function App() {
   }, []);
 
   return (
-    <AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
       <div className="app">
         <div className="topbar">
           <button className="hamburger" onClick={() => setMenuOpen((v) => !v)} aria-label="Toggle menu">
@@ -70,7 +70,10 @@ export default function App() {
               </NavLink>
             ))}
           </nav>
-          <AccountControl />
+          <div className="topbar-utility">
+            <ThemeToggle />
+            <AccountControl />
+          </div>
         </div>
         <main>
           <Routes>
@@ -113,6 +116,7 @@ export default function App() {
           </Routes>
         </main>
       </div>
-    </AuthProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

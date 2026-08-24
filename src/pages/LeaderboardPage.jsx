@@ -14,14 +14,14 @@ export default function LeaderboardPage() {
   }, []);
 
   if (!data) return <p>Loading...</p>;
-  const { session_length, entries } = data;
+  const { session_length, limit, entries } = data;
 
   return (
     <div className="leaderboard">
       <h2>Leaderboard</h2>
       <p className="song-meta">
-        Best completed {session_length}-question session, score = number of songs checked &times; points earned.
-        Early formula — expect it to change.
+        Top {limit} completed {session_length}-question sessions, score = (number of songs checked &divide; 2)
+        &times; points earned. Early formula — expect it to change.
       </p>
       {entries.length === 0 ? (
         <p>No one has completed a full {session_length}-question session yet.</p>

@@ -16,11 +16,17 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS,
 } from './googleAuth.js';
+import { DISPLAY_NAME_PATTERN } from './lib/randomDisplayName.js';
 
 // Standard quiz session length — also what a session needs to hit to be
 // leaderboard-eligible (see GET /api/leaderboard). Mirrored on the client
 // (QuizPage.jsx's SESSION_LENGTH) for the initial fetch.
 const SESSION_LENGTH = 25;
+
+// How many ranked entries the Leaderboard shows — matches SESSION_LENGTH
+// (top 25 for a 25-question session) purely as a memorable default, not a
+// derived value; change independently if that stops making sense.
+const LEADERBOARD_LIMIT = 25;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -70,8 +76,26 @@ app.post('/api/auth/logout', (_req, res) => {
 
 app.get('/api/me', async (req, res) => {
   if (!req.userId) return res.json(null);
-  const user = await db.prepare('SELECT id, name, email, role, picture_url FROM users WHERE id = ?').get(req.userId);
+  const user = await db
+    .prepare('SELECT id, name, display_name, email, role, picture_url FROM users WHERE id = ?')
+    .get(req.userId);
   res.json(user ?? null);
+});
+
+// The public-facing username (topbar, Leaderboard) — kept separate from the
+// real Google `name` so nobody's real name is shown by default.
+app.put('/api/profile', requireAuth, async (req, res) => {
+  const displayName = String(req.body.display_name ?? '').trim();
+  if (!DISPLAY_NAME_PATTERN.test(displayName)) {
+    return res.status(400).json({ error: 'display_name must be 3-15 letters/numbers only' });
+  }
+  const taken = await db
+    .prepare('SELECT 1 FROM users WHERE display_name = ? COLLATE NOCASE AND id != ?')
+    .get(displayName, currentUserId(req));
+  if (taken) return res.status(409).json({ error: 'that name is already taken' });
+
+  await db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(displayName, currentUserId(req));
+  res.json({ ok: true });
 });
 
 // Song titles for autocomplete, or (with ?stats=1) the enriched list for the
@@ -561,7 +585,7 @@ app.get('/api/stats/songs', requireAuth, async (req, res) => {
 app.get('/api/leaderboard', async (_req, res) => {
   const rows = await db
     .prepare(
-      `SELECT s.user_id as user_id, u.name as name, s.id as session_id, s.active_song_count as active_song_count,
+      `SELECT s.user_id as user_id, u.display_name as name, s.id as session_id, s.active_song_count as active_song_count,
               SUM(a.points) as session_points, COUNT(a.id) as answered
        FROM quiz_sessions s
        JOIN users u ON u.id = s.user_id
@@ -581,8 +605,8 @@ app.get('/api/leaderboard', async (_req, res) => {
     }
   }
 
-  const entries = [...best.values()].sort((a, b) => b.score - a.score);
-  res.json({ session_length: SESSION_LENGTH, entries });
+  const entries = [...best.values()].sort((a, b) => b.score - a.score).slice(0, LEADERBOARD_LIMIT);
+  res.json({ session_length: SESSION_LENGTH, limit: LEADERBOARD_LIMIT, entries });
 });
 
 // Vercel's runtime invokes the exported app directly per-request rather

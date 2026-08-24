@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../lib/AuthContext';
+import { useTheme } from '../lib/ThemeContext';
 
 // Google's Identity Services script (loaded in index.html) attaches itself
 // to window.google asynchronously — poll briefly rather than assuming it's
@@ -7,6 +8,7 @@ import { useAuth } from '../lib/AuthContext';
 export default function GoogleSignInButton() {
   const buttonRef = useRef(null);
   const { refresh } = useAuth();
+  const { theme } = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -22,11 +24,15 @@ export default function GoogleSignInButton() {
 
     function render() {
       if (cancelled || !buttonRef.current || !window.google?.accounts?.id) return;
+      buttonRef.current.innerHTML = '';
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
         callback: handleCredential,
       });
-      window.google.accounts.id.renderButton(buttonRef.current, { theme: 'outline', size: 'large' });
+      window.google.accounts.id.renderButton(buttonRef.current, {
+        theme: theme === 'dark' ? 'filled_black' : 'outline',
+        size: 'large',
+      });
     }
 
     if (window.google?.accounts?.id) {
@@ -43,7 +49,7 @@ export default function GoogleSignInButton() {
         clearInterval(interval);
       };
     }
-  }, [refresh]);
+  }, [refresh, theme]);
 
   return <div ref={buttonRef} />;
 }

@@ -1,9 +1,14 @@
 import { useState } from 'react';
+import { useTheme } from '../lib/ThemeContext';
 
 const WIDTH = 640;
 const HEIGHT = 220;
 const PAD = { top: 16, right: 16, bottom: 28, left: 36 };
-const PALETTE = ['#aa3bff', '#2dd4bf', '#f59e0b', '#ef4444', '#22c55e', '#3b82f6', '#e879f9', '#a3a300'];
+// Colorblind-checked categorical sets, tuned per-mode for contrast against
+// the page background — independent of --accent, since the chart's job is
+// series identity, not brand color.
+const PALETTE_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+const PALETTE_DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
 
 function seriesLabel(count) {
   return count === null ? 'Before tracking' : `${count} song${count === 1 ? '' : 's'}`;
@@ -17,6 +22,8 @@ function seriesLabel(count) {
 // dropped.
 export default function TrendChart({ daily }) {
   const [hoverDay, setHoverDay] = useState(null);
+  const { theme } = useTheme();
+  const PALETTE = theme === 'dark' ? PALETTE_DARK : PALETTE_LIGHT;
 
   if (daily.length === 0) return <p>No attempts logged yet — play a session first.</p>;
 
