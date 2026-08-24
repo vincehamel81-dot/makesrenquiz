@@ -21,8 +21,11 @@
   "dependencies": {
     "@libsql/client": "^0.17.4",
     "@vercel/blob": "^2.8.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "google-auth-library": "^11.0.2",
+    "jsonwebtoken": "^9.0.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2"

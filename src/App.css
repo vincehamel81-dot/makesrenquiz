@@ -5,12 +5,38 @@
   text-align: left;
 }
 
+.topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--border, #333);
   flex-wrap: wrap;
+  flex: 1;
+}
+
+.account-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.auth-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 0;
 }
 
 .tabs a {

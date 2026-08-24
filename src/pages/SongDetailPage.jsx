@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ClipPlayer from '../components/ClipPlayer';
+import { useAuth } from '../lib/AuthContext';
 
 function formatTime(sec) {
   const m = Math.floor(sec / 60);
@@ -23,6 +24,7 @@ const EMPTY_EGG_FORM = { term: '', description: '', confidence: 'theory', quizza
 export default function SongDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
   const [detail, setDetail] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -173,11 +175,13 @@ export default function SongDetailPage() {
     <div className="song-detail">
       <div className="song-detail-topbar">
         <Link to="/songs">&larr; Back to songs</Link>
-        <button className="danger-link" onClick={deleteSong}>
-          Delete song
-        </button>
+        {isAdmin && (
+          <button className="danger-link" onClick={deleteSong}>
+            Delete song
+          </button>
+        )}
       </div>
-      {editingTitle ? (
+      {isAdmin && editingTitle ? (
         <div className="title-editor">
           <input
             type="text"
@@ -204,43 +208,51 @@ export default function SongDetailPage() {
       ) : (
         <h2>
           {detail.title}{' '}
-          <button className="edit-title-btn" onClick={() => setEditingTitle(true)} title="Rename song">
-            ✎
-          </button>
+          {isAdmin && (
+            <button className="edit-title-btn" onClick={() => setEditingTitle(true)} title="Rename song">
+              ✎
+            </button>
+          )}
         </h2>
       )}
-      <div className="rating-field">
-        <label>
-          Album:
-          <input
-            type="text"
-            placeholder="No album"
-            value={albumDraft}
-            onChange={(e) => setAlbumDraft(e.target.value)}
-            className="youtube-url-input"
-          />
-        </label>
-        <button onClick={saveAlbum} disabled={savingAlbum || albumDraft === (detail.album_name ?? '')}>
-          {savingAlbum ? 'Saving...' : 'Save'}
-        </button>
-      </div>
-
-      <div className="video-embed-block">
+      {isAdmin ? (
         <div className="rating-field">
           <label>
-            Audio link (YouTube/SoundCloud):
+            Album:
             <input
               type="text"
-              placeholder="https://www.youtube.com/watch?v=... or https://soundcloud.com/..."
-              value={urlDraft}
-              onChange={(e) => setUrlDraft(e.target.value)}
+              placeholder="No album"
+              value={albumDraft}
+              onChange={(e) => setAlbumDraft(e.target.value)}
               className="youtube-url-input"
             />
           </label>
-          <button onClick={saveUrl} disabled={savingUrl || urlDraft === (detail.youtube_url ?? '')}>
-            {savingUrl ? 'Saving...' : 'Save'}
+          <button onClick={saveAlbum} disabled={savingAlbum || albumDraft === (detail.album_name ?? '')}>
+            {savingAlbum ? 'Saving...' : 'Save'}
           </button>
         </div>
+      ) : (
+        detail.album_name && <p className="song-meta">Album: {detail.album_name}</p>
+      )}
+
+      <div className="video-embed-block">
+        {isAdmin && (
+          <div className="rating-field">
+            <label>
+              Audio link (YouTube/SoundCloud):
+              <input
+                type="text"
+                placeholder="https://www.youtube.com/watch?v=... or https://soundcloud.com/..."
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                className="youtube-url-input"
+              />
+            </label>
+            <button onClick={saveUrl} disabled={savingUrl || urlDraft === (detail.youtube_url ?? '')}>
+              {savingUrl ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
         {detail.youtube_url && (
           <>
             <button onClick={() => setShowVideo((v) => !v)}>
@@ -275,21 +287,23 @@ export default function SongDetailPage() {
         )}
       </div>
 
-      <div className="rating-field">
-        <label>
-          Your rating (0–1000):
-          <input
-            type="number"
-            min="0"
-            max="1000"
-            value={ratingDraft}
-            onChange={(e) => setRatingDraft(e.target.value)}
-          />
-        </label>
-        <button onClick={saveRating} disabled={savingRating || Number(ratingDraft) === detail.rating}>
-          {savingRating ? 'Saving...' : 'Save'}
-        </button>
-      </div>
+      {user && (
+        <div className="rating-field">
+          <label>
+            Your rating (0–1000):
+            <input
+              type="number"
+              min="0"
+              max="1000"
+              value={ratingDraft}
+              onChange={(e) => setRatingDraft(e.target.value)}
+            />
+          </label>
+          <button onClick={saveRating} disabled={savingRating || Number(ratingDraft) === detail.rating}>
+            {savingRating ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      )}
 
       <h3>Audio clips</h3>
       {detail.clips.length === 0 ? (
@@ -299,10 +313,12 @@ export default function SongDetailPage() {
           {detail.clips.map((c) => (
             <div key={c.id} className="clip-list-item">
               <span>{formatTime(c.start_sec)}</span>
-              <ClipPlayer src={`/audio/${c.file_path}`} durationSec={c.duration_sec} />
-              <button className="egg-delete" onClick={() => deleteClip(c.id)} title="Remove this clip">
-                ✕
-              </button>
+              <ClipPlayer src={c.audio_url} durationSec={c.duration_sec} />
+              {isAdmin && (
+                <button className="egg-delete" onClick={() => deleteClip(c.id)} title="Remove this clip">
+                  ✕
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -319,7 +335,9 @@ export default function SongDetailPage() {
               </p>
             ))}
           </div>
-          <button onClick={startEditing}>{detail.lyrics.length === 0 ? 'Add lyrics' : 'Edit lyrics'}</button>
+          {isAdmin && (
+            <button onClick={startEditing}>{detail.lyrics.length === 0 ? 'Add lyrics' : 'Edit lyrics'}</button>
+          )}
         </>
       ) : (
         <>
@@ -359,15 +377,17 @@ export default function SongDetailPage() {
                   </a>
                 </>
               )}
-              <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this easter egg">
-                ✕
-              </button>
+              {isAdmin && (
+                <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this easter egg">
+                  ✕
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      {!addingEgg ? (
+      {!isAdmin ? null : !addingEgg ? (
         <button onClick={() => setAddingEgg(true)}>+ Add easter egg</button>
       ) : (
         <form className="egg-form" onSubmit={submitEgg}>

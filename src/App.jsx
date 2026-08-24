@@ -8,6 +8,9 @@ import SongsListPage from './pages/SongsListPage';
 import SongDetailPage from './pages/SongDetailPage';
 import ProfilePage from './pages/ProfilePage';
 import LeaderboardPage from './pages/LeaderboardPage';
+import RequireAuth from './components/RequireAuth';
+import GoogleSignInButton from './components/GoogleSignInButton';
+import { AuthProvider, useAuth } from './lib/AuthContext';
 import './App.css';
 
 const TABS = [
@@ -20,6 +23,23 @@ const TABS = [
   { to: '/profile', label: 'Profile' },
 ];
 
+function AccountControl() {
+  const { user, checking, logout } = useAuth();
+  if (checking) return null;
+  if (!user) return <GoogleSignInButton />;
+  return (
+    <div className="account-control">
+      <span>
+        {user.name}
+        {user.role === 'admin' && <span className="mini-badge yes"> admin</span>}
+      </span>
+      <button className="btn-secondary" onClick={logout}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [songTitles, setSongTitles] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -31,37 +51,68 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app">
-      <div className="topbar">
-        <button className="hamburger" onClick={() => setMenuOpen((v) => !v)} aria-label="Toggle menu">
-          ☰
-        </button>
-        <nav className={`tabs${menuOpen ? ' open' : ''}`}>
-          {TABS.map(({ to, label, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) => (isActive ? 'active' : '')}
-              onClick={() => setMenuOpen(false)}
-            >
-              {label}
-            </NavLink>
-          ))}
-        </nav>
+    <AuthProvider>
+      <div className="app">
+        <div className="topbar">
+          <button className="hamburger" onClick={() => setMenuOpen((v) => !v)} aria-label="Toggle menu">
+            ☰
+          </button>
+          <nav className={`tabs${menuOpen ? ' open' : ''}`}>
+            {TABS.map(({ to, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) => (isActive ? 'active' : '')}
+                onClick={() => setMenuOpen(false)}
+              >
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <AccountControl />
+        </div>
+        <main>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <QuizPage songTitles={songTitles} />
+                </RequireAuth>
+              }
+            />
+            <Route path="/songs" element={<SongsListPage />} />
+            <Route path="/songs/:slug" element={<SongDetailPage />} />
+            <Route
+              path="/history"
+              element={
+                <RequireAuth>
+                  <HistoryPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/song-knowledge"
+              element={
+                <RequireAuth>
+                  <SongKnowledgePage />
+                </RequireAuth>
+              }
+            />
+            <Route path="/lookup" element={<LookupPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth>
+                  <ProfilePage />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </main>
       </div>
-      <main>
-        <Routes>
-          <Route path="/" element={<QuizPage songTitles={songTitles} />} />
-          <Route path="/songs" element={<SongsListPage />} />
-          <Route path="/songs/:slug" element={<SongDetailPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/song-knowledge" element={<SongKnowledgePage />} />
-          <Route path="/lookup" element={<LookupPage />} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-        </Routes>
-      </main>
-    </div>
+    </AuthProvider>
   );
 }

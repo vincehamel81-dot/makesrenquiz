@@ -1,12 +1,18 @@
--- Accounts. Single hardcoded row (id 1 = vince) for now — no auth yet, see
--- server/auth.js. Real SSO later only needs to fill this table in properly
--- and derive the id from a session instead of hardcoding it.
+-- Accounts. google_sub is Google's stable per-account id, set on first
+-- real sign-in (see server/auth/google.js) — null until then. The seed row
+-- (id 1 = vince) is matched by email on his first Google sign-in rather
+-- than getting a second row, so his existing history/ratings/checklist
+-- carry over intact.
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  email TEXT UNIQUE
+  email TEXT UNIQUE,
+  google_sub TEXT,
+  role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user')),
+  picture_url TEXT
 );
-INSERT OR IGNORE INTO users (id, name, email) VALUES (1, 'vince', 'vince.hamel81@gmail.com');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);
+INSERT OR IGNORE INTO users (id, name, email, role) VALUES (1, 'vince', 'vince.hamel81@gmail.com', 'admin');
 
 CREATE TABLE IF NOT EXISTS albums (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
