@@ -934,7 +934,7 @@ a.mini-badge {
   border: 1px solid var(--surface-border);
   border-radius: 8px;
   min-height: 320px;
-  max-height: 420px;
+  max-height: 480px;
   overflow-y: auto;
   padding: 6px;
 }
@@ -950,13 +950,15 @@ a.mini-badge {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 12px 10px;
   border-radius: 6px;
   background: var(--surface);
   border: 1px solid var(--surface-border);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   cursor: grab;
   touch-action: none;
+  box-sizing: border-box;
 }
 
 .rank-row:hover,
