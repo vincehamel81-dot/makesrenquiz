@@ -351,7 +351,7 @@ export default function SongDetailPage() {
                 <>
                   {' '}
                   <a href={e.source_url} target="_blank" rel="noreferrer">
-                    source
+                    Source &gt;
                   </a>
                 </>
               )}
