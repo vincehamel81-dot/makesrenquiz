@@ -251,6 +251,14 @@ export default function QuizPage({ songTitles }) {
   const displayPrompt =
     q.type === 'lyric' && lyricLines ? `Which song is this lyric from?\n"${lyricLines.join('\n')}"` : q.prompt;
 
+  // Indexed by question position rather than "is reveal truthy yet" —
+  // recordAttempt pushes into `attempts` synchronously but only sets
+  // `reveal` after an awaited trivia fetch, so gating on `reveal` here left
+  // a brief window where attempts.length had already grown but the split
+  // hadn't caught up, flashing the wrong number.
+  const priorScore = attempts.slice(0, index).reduce((s, a) => s + a.points, 0);
+  const currentAttempt = attempts[index] ?? null;
+
   function choiceClass(c) {
     if (!reveal) return '';
     if (c === q.correct_answer) return 'correct';
@@ -261,7 +269,9 @@ export default function QuizPage({ songTitles }) {
   return (
     <div className="quiz">
       <p className="progress">
-        Question {index + 1} / {questions.length}
+        Question {index + 1} / {questions.length} (Score: {priorScore}
+        {currentAttempt && currentAttempt.points > 0 && <span className="score-delta"> + {currentAttempt.points}</span>}
+        )
       </p>
       <p className="prompt" style={{ whiteSpace: 'pre-wrap' }}>
         {displayPrompt}

@@ -143,6 +143,11 @@
   margin: 16px 0;
 }
 
+.score-delta {
+  color: var(--good);
+  font-weight: 600;
+}
+
 .autocomplete {
   position: relative;
   width: 100%;

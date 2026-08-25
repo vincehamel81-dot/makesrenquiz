@@ -31,9 +31,8 @@ export default function LeaderboardPage() {
             <tr>
               <th>#</th>
               <th>Name</th>
-              <th>Score</th>
               <th># Songs</th>
-              <th>Points</th>
+              <th>Score</th>
             </tr>
           </thead>
           <tbody>
@@ -41,9 +40,8 @@ export default function LeaderboardPage() {
               <tr key={r.user_id}>
                 <td>{i + 1}</td>
                 <td>{r.name}</td>
-                <td>{r.score}</td>
                 <td>{r.active_song_count}</td>
-                <td>{r.points}</td>
+                <td>{r.score}</td>
               </tr>
             ))}
           </tbody>
