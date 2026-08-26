@@ -373,6 +373,11 @@ td {
   margin-bottom: 14px;
 }
 
+.lookup form button {
+  margin-top: 10px;
+  margin-bottom: 5px;
+}
+
 .attempt-breakdown {
   display: flex;
   flex-direction: column;
@@ -991,10 +996,38 @@ a.mini-badge {
   border-color: var(--accent-border);
 }
 
+.rank-row-over {
+  border-color: var(--accent);
+  box-shadow: 0 -2px 0 var(--accent);
+}
+
+.rank-list-over {
+  border-color: var(--accent);
+}
+
 .rank-position {
   font-variant-numeric: tabular-nums;
   opacity: 0.55;
   min-width: 2ch;
+}
+
+.rank-play {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: var(--text-xs);
+}
+
+.rank-play-empty {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
 }
 
 .rank-title {

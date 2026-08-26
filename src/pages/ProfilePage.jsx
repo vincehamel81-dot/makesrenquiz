@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [nameError, setNameError] = useState('');
+  const [resettingStats, setResettingStats] = useState(false);
 
   const [prefs, setPrefs] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -88,6 +89,16 @@ export default function ProfilePage() {
   function update(key, value) {
     setSaved(false);
     setDraft((d) => ({ ...d, [key]: Math.max(0, Math.min(100, Number(value) || 0)) }));
+  }
+
+  async function resetStats() {
+    const ok = confirm(
+      "Reset all your quiz stats? This permanently clears your quiz history — Song Knowledge progress, History, and Leaderboard eligibility all go back to zero. Your ratings and song checklist are NOT affected. This can't be undone."
+    );
+    if (!ok) return;
+    setResettingStats(true);
+    await fetch('/api/history', { method: 'DELETE' });
+    setResettingStats(false);
   }
 
   async function saveDisplayName() {
@@ -271,6 +282,15 @@ export default function ProfilePage() {
           ))}
         </div>
       )}
+
+      <h3>Reset stats</h3>
+      <p className="song-meta">
+        Clears your quiz history — Song Knowledge, History, and Leaderboard eligibility all go back to zero. Your
+        ratings and song checklist aren't affected.
+      </p>
+      <button className="danger-link" onClick={resetStats} disabled={resettingStats}>
+        {resettingStats ? 'Resetting...' : 'Reset my stats'}
+      </button>
     </div>
   );
 }

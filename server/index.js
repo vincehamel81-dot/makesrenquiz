@@ -113,11 +113,20 @@ app.get('/api/songs', async (req, res) => {
               EXISTS(SELECT 1 FROM user_songs us WHERE us.song_id = s.id AND us.user_id = ?) as known,
               (SELECT COUNT(*) FROM lyrics_lines ll WHERE ll.song_id = s.id AND ll.is_header = 0) as lyricLineCount,
               (SELECT COUNT(*) FROM questions q WHERE q.song_id = s.id AND q.type = 'audio' AND q.status != 'retired') as clipCount,
-              (SELECT COUNT(*) FROM easter_eggs e WHERE e.song_id = s.id AND e.deleted = 0) as easterEggCount
+              (SELECT COUNT(*) FROM easter_eggs e WHERE e.song_id = s.id AND e.deleted = 0) as easterEggCount,
+              (SELECT file_path FROM questions q WHERE q.song_id = s.id AND q.type = 'audio' AND q.status != 'retired'
+               ORDER BY q.start_sec LIMIT 1) as sample_clip_path
        FROM songs s LEFT JOIN albums a ON a.id = s.album_id ORDER BY s.title`
     )
     .all(userId, userId);
-  res.json(songs.map((s) => ({ ...s, known: !!s.known })));
+  res.json(
+    songs.map((s) => ({
+      ...s,
+      known: !!s.known,
+      sample_clip_url: s.sample_clip_path ? audioClipUrl(s.sample_clip_path) : null,
+      sample_clip_path: undefined,
+    }))
+  );
 });
 
 function slugify(title) {
@@ -293,6 +302,16 @@ app.get('/api/questions/:id/lyric-lines', requireAuth, async (req, res) => {
     )
     .all(q.song_id, q.start_line_no, count);
   res.json({ lines: lines.map((l) => l.text) });
+});
+
+// Wipes your own quiz history — attempts and sessions — so Song Knowledge,
+// History, and Leaderboard eligibility all reset to zero. Ratings and your
+// song checklist live in separate tables and are untouched.
+app.delete('/api/history', requireAuth, async (req, res) => {
+  const userId = currentUserId(req);
+  await db.prepare('DELETE FROM quiz_attempts WHERE user_id = ?').run(userId);
+  await db.prepare('DELETE FROM quiz_sessions WHERE user_id = ?').run(userId);
+  res.json({ ok: true });
 });
 
 // History: daily totals + accuracy by question type. "Accuracy" here is
@@ -561,13 +580,15 @@ app.get('/api/lookup', async (req, res) => {
 });
 
 // Per-song accuracy broken down into lyrics / audio-clip / other-fact
-// questions, for the "Song Knowledge" practice view. Same points-vs-max
-// methodology as /api/history — see MAX_POINTS_SQL's comment above.
+// questions, for the "Song Knowledge" practice view. Deliberately NOT the
+// points-weighted scheme /api/history uses — this is meant to answer "do I
+// know this song," so each question is worth exactly 1 regardless of type
+// or how it was answered, not weighted by how much it happened to be worth.
 app.get('/api/stats/songs', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
   const rows = await db
     .prepare(
-      `SELECT song_id, question_type, COUNT(*) as attempts, SUM(points) as points, ${MAX_POINTS_SQL} as max_points
+      `SELECT song_id, question_type, COUNT(*) as attempts, SUM(was_correct) as correct
        FROM quiz_attempts WHERE user_id = ? AND song_id IS NOT NULL GROUP BY song_id, question_type`
     )
     .all(userId);
@@ -577,14 +598,14 @@ app.get('/api/stats/songs', requireAuth, async (req, res) => {
   for (const r of rows) {
     if (!bySong.has(r.song_id)) {
       bySong.set(r.song_id, {
-        lyrics: { points: 0, maxPoints: 0 },
-        video: { points: 0, maxPoints: 0 },
-        other: { points: 0, maxPoints: 0 },
+        lyrics: { correct: 0, total: 0 },
+        video: { correct: 0, total: 0 },
+        other: { correct: 0, total: 0 },
       });
     }
     const bucket = bySong.get(r.song_id)[bucketOf(r.question_type)];
-    bucket.points += r.points;
-    bucket.maxPoints += r.max_points;
+    bucket.correct += r.correct;
+    bucket.total += r.attempts;
   }
 
   const ratingRows = await db.prepare('SELECT song_id, rating FROM user_song_ratings WHERE user_id = ?').all(userId);
@@ -599,9 +620,9 @@ app.get('/api/stats/songs', requireAuth, async (req, res) => {
       rating: ratings.get(s.id) ?? 0,
       known: knownIds.has(s.id),
       ...(bySong.get(s.id) ?? {
-        lyrics: { points: 0, maxPoints: 0 },
-        video: { points: 0, maxPoints: 0 },
-        other: { points: 0, maxPoints: 0 },
+        lyrics: { correct: 0, total: 0 },
+        video: { correct: 0, total: 0 },
+        other: { correct: 0, total: 0 },
       }),
     }))
   );
@@ -633,12 +654,33 @@ app.get('/api/leaderboard', async (_req, res) => {
     const score = Math.round((r.active_song_count / 2) * r.session_points);
     const prev = best.get(r.user_id);
     if (!prev || score > prev.score) {
-      best.set(r.user_id, { user_id: r.user_id, name: r.name, score, active_song_count: r.active_song_count, points: r.session_points });
+      best.set(r.user_id, {
+        user_id: r.user_id,
+        name: r.name,
+        score,
+        active_song_count: r.active_song_count,
+        points: r.session_points,
+        session_id: r.session_id,
+      });
     }
   }
 
   const entries = [...best.values()].sort((a, b) => b.score - a.score).slice(0, LEADERBOARD_LIMIT);
   res.json({ session_length: SESSION_LENGTH, limit: LEADERBOARD_LIMIT, entries });
+});
+
+// Question-by-question drilldown for one leaderboard entry's best session —
+// public, matching the Leaderboard itself (see GET /api/leaderboard).
+app.get('/api/leaderboard/:sessionId/attempts', async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  if (!Number.isInteger(sessionId)) return res.status(400).json({ error: 'invalid session id' });
+  const rows = await db
+    .prepare(
+      `SELECT question_type, correct_answer, user_answer, mode, was_correct, points
+       FROM quiz_attempts WHERE session_id = ? ORDER BY id`
+    )
+    .all(sessionId);
+  res.json(rows);
 });
 
 // Vercel's runtime invokes the exported app directly per-request rather

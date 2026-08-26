@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -18,12 +18,66 @@ function byTitle(a, b) {
   return a.title.localeCompare(b.title);
 }
 
-function RankedRow({ song, index, onRemove }) {
+// Compact play/stop control for a row — same "first 5s only" idea as
+// ClipPlayer, just an icon rather than a labeled button so it fits a dense
+// list of up to ~170 rows. Rows spread dnd-kit's drag {...listeners} across
+// the whole element, so this needs its own pointerdown stopPropagation like
+// the remove button below, or a click here would start a drag instead.
+function PlayButton({ src }) {
+  const audioRef = useRef(null);
+  const timeoutRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+
+  if (!src) return <span className="rank-play rank-play-empty" />;
+
+  function toggle() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      clearTimeout(timeoutRef.current);
+      audio.pause();
+      setPlaying(false);
+      return;
+    }
+    audio.currentTime = 0;
+    audio.play();
+    setPlaying(true);
+    timeoutRef.current = setTimeout(() => {
+      audio.pause();
+      setPlaying(false);
+    }, 5000);
+  }
+
+  return (
+    <button
+      type="button"
+      className="rank-play"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={toggle}
+      title={playing ? 'Stop' : 'Play clip (5s)'}
+      aria-label={playing ? 'Stop' : 'Play clip'}
+    >
+      <audio ref={audioRef} src={src} preload="none" onEnded={() => setPlaying(false)} />
+      {playing ? '■' : '▶'}
+    </button>
+  );
+}
+
+function RankedRow({ song, index, onRemove, isOver }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: song.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
-    <div ref={setNodeRef} style={style} className="rank-row" {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rank-row${isOver ? ' rank-row-over' : ''}`}
+      {...attributes}
+      {...listeners}
+    >
       <span className="rank-position">{index + 1}</span>
+      <PlayButton src={song.sample_clip_url} />
       <span className="rank-title">{song.title}</span>
       <button
         type="button"
@@ -43,19 +97,20 @@ function AvailableRow({ song }) {
   const style = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.4 : 1 };
   return (
     <div ref={setNodeRef} style={style} className="avail-row" {...attributes} {...listeners}>
+      <PlayButton src={song.sample_clip_url} />
       {song.title}
     </div>
   );
 }
 
-function RankedColumn({ ranked, onRemove }) {
-  const { setNodeRef } = useDroppable({ id: 'ranked-dropzone' });
+function RankedColumn({ ranked, onRemove, overId }) {
+  const { setNodeRef, isOver: isOverEmptyZone } = useDroppable({ id: 'ranked-dropzone' });
   return (
-    <div ref={setNodeRef} className="rank-list">
+    <div ref={setNodeRef} className={`rank-list${isOverEmptyZone && ranked.length === 0 ? ' rank-list-over' : ''}`}>
       <SortableContext items={ranked.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         {ranked.length === 0 && <p className="rank-empty">Drag songs here to rank them.</p>}
         {ranked.map((song, i) => (
-          <RankedRow key={song.id} song={song} index={i} onRemove={onRemove} />
+          <RankedRow key={song.id} song={song} index={i} onRemove={onRemove} isOver={overId === song.id} />
         ))}
       </SortableContext>
     </div>
@@ -73,6 +128,7 @@ export default function RankingModal({ onClose, onSaved }) {
   const [filter, setFilter] = useState('');
   const [saving, setSaving] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
+  const [overId, setOverId] = useState(null);
 
   useEffect(() => {
     fetch('/api/songs?stats=1')
@@ -95,6 +151,7 @@ export default function RankingModal({ onClose, onSaved }) {
 
   function handleDragEnd(event) {
     setDraggingId(null);
+    setOverId(null);
     const { active, over } = event;
     if (!over) return;
 
@@ -157,12 +214,13 @@ export default function RankingModal({ onClose, onSaved }) {
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={(e) => setDraggingId(e.active.id)}
+        onDragOver={(e) => setOverId(e.over?.id !== 'ranked-dropzone' ? (e.over?.id ?? null) : null)}
         onDragEnd={handleDragEnd}
       >
         <div className="rank-columns">
           <div className="rank-column">
             <h3>Ranked ({ranked.length})</h3>
-            <RankedColumn ranked={ranked} onRemove={handleRemove} />
+            <RankedColumn ranked={ranked} onRemove={handleRemove} overId={overId} />
           </div>
           <div className="rank-column">
             <h3>Available ({available.length})</h3>

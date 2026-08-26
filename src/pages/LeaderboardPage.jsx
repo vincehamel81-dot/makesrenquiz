@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 // v1 formula (placeholder, will be retuned): active_song_count * points,
 // from each user's best fully-completed session. Shorter sessions still
@@ -6,12 +6,26 @@ import { useEffect, useState } from 'react';
 // which is also where session_length actually comes from (not hardcoded here).
 export default function LeaderboardPage() {
   const [data, setData] = useState(null);
+  const [expandedUserId, setExpandedUserId] = useState(null);
+  const [attemptsBySession, setAttemptsBySession] = useState({});
 
   useEffect(() => {
     fetch('/api/leaderboard')
       .then((r) => r.json())
       .then(setData);
   }, []);
+
+  async function toggleDrilldown(entry) {
+    if (expandedUserId === entry.user_id) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(entry.user_id);
+    if (!attemptsBySession[entry.session_id]) {
+      const attempts = await fetch(`/api/leaderboard/${entry.session_id}/attempts`).then((r) => r.json());
+      setAttemptsBySession((prev) => ({ ...prev, [entry.session_id]: attempts }));
+    }
+  }
 
   if (!data) return <p>Loading...</p>;
   const { session_length, limit, entries } = data;
@@ -33,16 +47,50 @@ export default function LeaderboardPage() {
               <th>Name</th>
               <th># Songs</th>
               <th>Score</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {entries.map((r, i) => (
-              <tr key={r.user_id}>
-                <td>{i + 1}</td>
-                <td>{r.name}</td>
-                <td>{r.active_song_count}</td>
-                <td>{r.score}</td>
-              </tr>
+              <Fragment key={r.user_id}>
+                <tr>
+                  <td>{i + 1}</td>
+                  <td>{r.name}</td>
+                  <td>{r.active_song_count}</td>
+                  <td>{r.score}</td>
+                  <td>
+                    <button className="btn-secondary" onClick={() => toggleDrilldown(r)}>
+                      {expandedUserId === r.user_id ? 'Hide' : 'View details'}
+                    </button>
+                  </td>
+                </tr>
+                {expandedUserId === r.user_id && (
+                  <tr>
+                    <td colSpan={5}>
+                      <div className="attempt-breakdown">
+                        {!attemptsBySession[r.session_id] ? (
+                          <p>Loading...</p>
+                        ) : (
+                          attemptsBySession[r.session_id].map((a, idx) => (
+                            <div key={idx} className={`attempt-row ${a.was_correct ? 'is-correct' : 'is-wrong'}`}>
+                              <span className="attempt-answer">{a.correct_answer}</span>
+                              {a.was_correct ? (
+                                <span className="attempt-status">
+                                  ✓ {a.mode === 'choice' ? 'guessed from choices, ' : ''}+{a.points} pts
+                                </span>
+                              ) : (
+                                <span className="attempt-status">
+                                  ✕ they said "{a.user_answer || '(nothing)'}" — +0 pts
+                                </span>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
