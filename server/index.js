@@ -579,6 +579,44 @@ app.get('/api/lookup', async (req, res) => {
   res.json(candidates.filter((r) => boundary.test(r.text)));
 });
 
+// Cross-song reference-term glossary shown at the bottom of Lyric Lookup —
+// public, matching the rest of that page.
+app.get('/api/reference-terms', async (_req, res) => {
+  const rows = await db
+    .prepare(
+      `SELECT rt.term as term, s.title as title, s.slug as slug
+       FROM reference_terms rt
+       JOIN reference_term_songs rts ON rts.term_id = rt.id
+       JOIN songs s ON s.id = rts.song_id
+       ORDER BY rt.term COLLATE NOCASE, s.title`
+    )
+    .all();
+  const byTerm = new Map();
+  for (const r of rows) {
+    if (!byTerm.has(r.term)) byTerm.set(r.term, { term: r.term, songs: [] });
+    byTerm.get(r.term).songs.push({ title: r.title, slug: r.slug });
+  }
+  res.json([...byTerm.values()]);
+});
+
+// Add one song under a term — find-or-create the term (case-insensitive),
+// then link the song. ON CONFLICT DO NOTHING so re-adding the same
+// term/song pair is a harmless no-op rather than an error.
+app.post('/api/reference-terms', requireAdmin, async (req, res) => {
+  const term = (req.body.term || '').trim();
+  const songTitle = (req.body.song_title || '').trim();
+  if (!term || !songTitle) return res.status(400).json({ error: 'term and song_title required' });
+  const song = await db.prepare('SELECT id FROM songs WHERE title = ? COLLATE NOCASE').get(songTitle);
+  if (!song) return res.status(404).json({ error: 'no song with that exact title' });
+
+  await db.prepare('INSERT INTO reference_terms (term) VALUES (?) ON CONFLICT(term) DO NOTHING').run(term);
+  const termRow = await db.prepare('SELECT id FROM reference_terms WHERE term = ? COLLATE NOCASE').get(term);
+  await db
+    .prepare('INSERT INTO reference_term_songs (term_id, song_id) VALUES (?, ?) ON CONFLICT(term_id, song_id) DO NOTHING')
+    .run(termRow.id, song.id);
+  res.status(201).json({ ok: true });
+});
+
 // Per-song accuracy broken down into lyrics / audio-clip / other-fact
 // questions, for the "Song Knowledge" practice view. Deliberately NOT the
 // points-weighted scheme /api/history uses — this is meant to answer "do I

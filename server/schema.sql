@@ -81,6 +81,22 @@ CREATE TABLE IF NOT EXISTS quiz_sessions (
   started_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Cross-song reference-term glossary shown on Lyric Lookup — deliberately
+-- separate from easter_eggs' 'reference' category (which is a note on ONE
+-- song); this is "term X shows up across songs A, B, C," built up manually
+-- via the page's own add form rather than derived from gem data.
+CREATE TABLE IF NOT EXISTS reference_terms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  term TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reference_terms_term ON reference_terms(term COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS reference_term_songs (
+  term_id INTEGER NOT NULL REFERENCES reference_terms(id),
+  song_id INTEGER NOT NULL REFERENCES songs(id),
+  PRIMARY KEY (term_id, song_id)
+);
+
 CREATE TABLE IF NOT EXISTS lyrics_lines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   song_id INTEGER NOT NULL REFERENCES songs(id),
