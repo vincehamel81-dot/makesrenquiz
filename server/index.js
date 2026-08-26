@@ -345,7 +345,9 @@ app.get('/api/songs/:slug/detail', async (req, res) => {
   const lyrics = await db.prepare('SELECT line_no, text, is_header FROM lyrics_lines WHERE song_id = ? ORDER BY line_no').all(song.id);
   const easterEggs = await db
     .prepare(
-      'SELECT id, term, description, category, confidence, source_url FROM easter_eggs WHERE song_id = ? AND deleted = 0 ORDER BY id'
+      `SELECT id, term, description, category, confidence, source_url, timestamp_sec
+       FROM easter_eggs WHERE song_id = ? AND deleted = 0
+       ORDER BY CASE WHEN timestamp_sec IS NULL THEN 1 ELSE 0 END, timestamp_sec, id`
     )
     .all(song.id);
   const clipRows = await db
@@ -408,12 +410,13 @@ const GEM_CATEGORIES = new Set(['easter_egg', 'reference', 'wordplay', 'fact']);
 app.post('/api/songs/:slug/easter-eggs', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });
-  const { term, description, category, confidence, quizzable, source_url } = req.body;
+  const { term, description, category, confidence, quizzable, source_url, timestamp_sec } = req.body;
   if (!description) return res.status(400).json({ error: 'description required' });
+  const timestampValue = Number.isInteger(timestamp_sec) && timestamp_sec >= 0 ? timestamp_sec : null;
   const info = await db
     .prepare(
-      `INSERT INTO easter_eggs (song_id, term, description, category, confidence, quizzable, source_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO easter_eggs (song_id, term, description, category, confidence, quizzable, source_url, timestamp_sec)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       song.id,
@@ -422,7 +425,8 @@ app.post('/api/songs/:slug/easter-eggs', requireAdmin, async (req, res) => {
       GEM_CATEGORIES.has(category) ? category : 'easter_egg',
       confidence === 'confirmed' ? 'confirmed' : 'theory',
       quizzable ? 1 : 0,
-      source_url || null
+      source_url || null,
+      timestampValue
     );
   if (quizzable && term) {
     await db.prepare(`INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`).run(song.id, info.lastInsertRowid);

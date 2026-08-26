@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ClipPlayer from '../components/ClipPlayer';
 import { useAuth } from '../lib/AuthContext';
@@ -7,6 +7,21 @@ function formatTime(sec) {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Gem timestamps are always MM:SS with both parts zero-padded (so they sort
+// and scan as plain text too), unlike formatTime()'s bare-minutes format
+// used for audio clip offsets elsewhere on this page.
+function formatMMSS(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function parseMMSS(text) {
+  const match = (text || '').trim().match(/^(\d{1,2}):([0-5]\d)$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 function youtubeVideoId(url) {
@@ -19,7 +34,15 @@ function isSoundCloudUrl(url) {
   return !!url && /(^|\/\/)(www\.)?soundcloud\.com\//.test(url);
 }
 
-const EMPTY_EGG_FORM = { term: '', description: '', category: 'easter_egg', confidence: 'theory', quizzable: false, source_url: '' };
+const EMPTY_EGG_FORM = {
+  term: '',
+  description: '',
+  category: 'easter_egg',
+  confidence: 'theory',
+  quizzable: false,
+  source_url: '',
+  timestamp: '',
+};
 
 const GEM_CATEGORY_LABELS = {
   easter_egg: 'Easter Egg',
@@ -39,6 +62,8 @@ export default function SongDetailPage() {
   const [addingEgg, setAddingEgg] = useState(false);
   const [eggForm, setEggForm] = useState(EMPTY_EGG_FORM);
   const [showVideo, setShowVideo] = useState(false);
+  const [videoStartSec, setVideoStartSec] = useState(0);
+  const videoBlockRef = useRef(null);
   const [urlDraft, setUrlDraft] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -57,6 +82,12 @@ export default function SongDetailPage() {
 
   useEffect(load, [slug]);
   useEffect(() => setShowVideo(false), [slug]);
+
+  useEffect(() => {
+    if (showVideo && videoStartSec > 0) {
+      videoBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [showVideo, videoStartSec]);
 
   useEffect(() => {
     if (detail) setUrlDraft(detail.youtube_url ?? '');
@@ -141,6 +172,11 @@ export default function SongDetailPage() {
     setDetail((d) => ({ ...d, easterEggs: d.easterEggs.filter((e) => e.id !== id) }));
   }
 
+  function jumpToTimestamp(sec) {
+    setVideoStartSec(sec);
+    setShowVideo(true);
+  }
+
   async function deleteClip(id) {
     await fetch(`/api/questions/${id}`, { method: 'DELETE' });
     setDetail((d) => ({ ...d, clips: d.clips.filter((c) => c.id !== id) }));
@@ -149,10 +185,11 @@ export default function SongDetailPage() {
   async function submitEgg(e) {
     e.preventDefault();
     if (!eggForm.description.trim()) return;
+    if (eggForm.timestamp.trim() && parseMMSS(eggForm.timestamp) === null) return;
     await fetch(`/api/songs/${slug}/easter-eggs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(eggForm),
+      body: JSON.stringify({ ...eggForm, timestamp_sec: parseMMSS(eggForm.timestamp) }),
     });
     setEggForm(EMPTY_EGG_FORM);
     setAddingEgg(false);
@@ -223,7 +260,7 @@ export default function SongDetailPage() {
         detail.album_name && <p className="song-meta">Album: {detail.album_name}</p>
       )}
 
-      <div className="video-embed-block">
+      <div className="video-embed-block" ref={videoBlockRef}>
         {isAdmin && (
           <div className="rating-field">
             <label>
@@ -250,7 +287,7 @@ export default function SongDetailPage() {
               (youtubeVideoId(detail.youtube_url) ? (
                 <div className="video-embed">
                   <iframe
-                    src={`https://www.youtube.com/embed/${youtubeVideoId(detail.youtube_url)}`}
+                    src={`https://www.youtube.com/embed/${youtubeVideoId(detail.youtube_url)}${videoStartSec ? `?start=${videoStartSec}` : ''}`}
                     title={`${detail.title} on YouTube`}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -343,18 +380,25 @@ export default function SongDetailPage() {
         <ul className="easter-eggs">
           {detail.easterEggs.map((e) => (
             <li key={e.id}>
-              <span className="badge category">{GEM_CATEGORY_LABELS[e.category] ?? e.category}</span>{' '}
-              <span className={`badge ${e.confidence}`}>{e.confidence}</span>
-              {e.term && <strong> "{e.term}" — </strong>}
-              {e.description}
-              {e.source_url && (
-                <>
-                  {' '}
-                  <a href={e.source_url} target="_blank" rel="noreferrer">
-                    Source &gt;
-                  </a>
-                </>
-              )}
+              <div className="gem-content">
+                {e.timestamp_sec !== null && (
+                  <button type="button" className="badge timestamp" onClick={() => jumpToTimestamp(e.timestamp_sec)}>
+                    {formatMMSS(e.timestamp_sec)}
+                  </button>
+                )}{' '}
+                <span className="badge category">{GEM_CATEGORY_LABELS[e.category] ?? e.category}</span>{' '}
+                <span className={`badge ${e.confidence}`}>{e.confidence}</span>
+                {e.term && <strong> "{e.term}" — </strong>}
+                {e.description}
+                {e.source_url && (
+                  <>
+                    {' '}
+                    <a href={e.source_url} target="_blank" rel="noreferrer">
+                      Source &gt;
+                    </a>
+                  </>
+                )}
+              </div>
               {isAdmin && (
                 <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this gem">
                   ✕
@@ -387,6 +431,15 @@ export default function SongDetailPage() {
             value={eggForm.source_url}
             onChange={(e) => setEggForm((f) => ({ ...f, source_url: e.target.value }))}
           />
+          <input
+            type="text"
+            placeholder="Timestamp MM:SS (optional)"
+            value={eggForm.timestamp}
+            onChange={(e) => setEggForm((f) => ({ ...f, timestamp: e.target.value }))}
+          />
+          {eggForm.timestamp.trim() && parseMMSS(eggForm.timestamp) === null && (
+            <p className="title-error">Timestamp must look like MM:SS, e.g. 02:15</p>
+          )}
           <label>
             <select value={eggForm.category} onChange={(e) => setEggForm((f) => ({ ...f, category: e.target.value }))}>
               {Object.entries(GEM_CATEGORY_LABELS).map(([value, label]) => (

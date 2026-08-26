@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS easter_eggs (
   song_id INTEGER NOT NULL REFERENCES songs(id),
   term TEXT,
   description TEXT NOT NULL,
+  timestamp_sec INTEGER, -- where in the video/audio this happens, for MM:SS display and jump-to-timestamp; null = untimed
   category TEXT NOT NULL DEFAULT 'easter_egg' CHECK(category IN ('easter_egg','reference','wordplay','fact')),
   confidence TEXT NOT NULL DEFAULT 'theory' CHECK(confidence IN ('confirmed','theory')),
   quizzable INTEGER NOT NULL DEFAULT 0,
