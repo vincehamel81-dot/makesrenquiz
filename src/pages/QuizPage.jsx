@@ -42,6 +42,7 @@ export default function QuizPage({ songTitles }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(null); // null = still checking
   const [questions, setQuestions] = useState(null);
   const [sessionId, setSessionId] = useState(null);
+  const [activeSongCount, setActiveSongCount] = useState(0);
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [choices, setChoices] = useState(null);
@@ -63,8 +64,9 @@ export default function QuizPage({ songTitles }) {
     if (needsOnboarding !== false) return;
     fetch('/api/quiz/questions')
       .then((r) => r.json())
-      .then(({ session_id, questions }) => {
+      .then(({ session_id, active_song_count, questions }) => {
         setSessionId(session_id);
+        setActiveSongCount(active_song_count);
         setQuestions(questions);
       });
   }, [needsOnboarding]);
@@ -99,6 +101,15 @@ export default function QuizPage({ songTitles }) {
     );
   }
 
+  // Raw per-type point values (TYPE_POINTS etc. above) aren't what shows up
+  // on the Leaderboard — that's (songs checked / 2) * points earned (see
+  // GET /api/leaderboard). Scaling the live/session-total score the same
+  // way means the number you watch climb during a session is the same
+  // currency as your Leaderboard entry, not a different, smaller one that
+  // jumps at the end.
+  const scoreMultiplier = activeSongCount / 2;
+  const scaledScore = (rawPoints) => Math.round(rawPoints * scoreMultiplier);
+
   const isDone = index >= questions.length;
 
   if (isDone) {
@@ -112,7 +123,7 @@ export default function QuizPage({ songTitles }) {
     }
     return (
       <div className="results">
-        <h2>Session complete — {total} points</h2>
+        <h2>Session complete — Score: {scaledScore(total)}</h2>
         <table>
           <thead>
             <tr>
@@ -258,6 +269,12 @@ export default function QuizPage({ songTitles }) {
   // hadn't caught up, flashing the wrong number.
   const priorScore = attempts.slice(0, index).reduce((s, a) => s + a.points, 0);
   const currentAttempt = attempts[index] ?? null;
+  // Round the two totals independently (prior, and prior+this-question) and
+  // take their difference for the displayed "+delta" — rounding the raw
+  // delta on its own could show "+X" that doesn't add up to the jump in the
+  // total next to it, off by a point from independent rounding.
+  const priorScoreScaled = scaledScore(priorScore);
+  const newTotalScaled = currentAttempt ? scaledScore(priorScore + currentAttempt.points) : priorScoreScaled;
 
   function choiceClass(c) {
     if (!reveal) return '';
@@ -269,8 +286,10 @@ export default function QuizPage({ songTitles }) {
   return (
     <div className="quiz">
       <p className="progress">
-        Question {index + 1} / {questions.length} (Score: {priorScore}
-        {currentAttempt && currentAttempt.points > 0 && <span className="score-delta"> + {currentAttempt.points}</span>}
+        Question {index + 1} / {questions.length} (Score: {priorScoreScaled}
+        {currentAttempt && currentAttempt.points > 0 && (
+          <span className="score-delta"> + {newTotalScaled - priorScoreScaled}</span>
+        )}
         )
       </p>
       <p className="prompt" style={{ whiteSpace: 'pre-wrap' }}>

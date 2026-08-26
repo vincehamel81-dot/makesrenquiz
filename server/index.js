@@ -231,7 +231,7 @@ app.get('/api/quiz/questions', requireAuth, async (req, res) => {
   const { lastInsertRowid: sessionId } = await db
     .prepare('INSERT INTO quiz_sessions (user_id, requested_count, active_song_count) VALUES (?, ?, ?)')
     .run(userId, count, activeSongCount);
-  res.json({ session_id: sessionId, questions: await generateSession(count, userId) });
+  res.json({ session_id: sessionId, active_song_count: activeSongCount, questions: await generateSession(count, userId) });
 });
 
 // Multiple-choice reveal for a given question
