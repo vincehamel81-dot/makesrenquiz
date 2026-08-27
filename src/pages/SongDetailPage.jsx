@@ -44,6 +44,7 @@ const GEM_CATEGORY_LABELS = {
   reference: 'Reference',
   wordplay: 'Wordplay',
   fact: 'Fact',
+  analysis: 'Analysis',
 };
 
 export default function SongDetailPage() {
@@ -384,7 +385,7 @@ export default function SongDetailPage() {
                 <span className="badge category">{GEM_CATEGORY_LABELS[e.category] ?? e.category}</span>{' '}
                 <span className={`badge ${e.confidence}`}>{e.confidence}</span>
                 {e.term && <strong> "{e.term}" — </strong>}
-                {e.description}
+                <span className="gem-description">{e.description}</span>
                 {e.source_url && (
                   <>
                     {' '}
@@ -415,8 +416,8 @@ export default function SongDetailPage() {
             onChange={(e) => setEggForm((f) => ({ ...f, term: e.target.value }))}
           />
           <textarea
-            rows={3}
-            placeholder="Description — what's the reference/wordplay/theory?"
+            rows={eggForm.category === 'analysis' ? 10 : 3}
+            placeholder="Description — what's the reference/wordplay/theory/analysis?"
             value={eggForm.description}
             onChange={(e) => setEggForm((f) => ({ ...f, description: e.target.value }))}
           />

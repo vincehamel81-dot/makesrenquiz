@@ -366,7 +366,8 @@ app.get('/api/songs/:slug/detail', async (req, res) => {
     .prepare(
       `SELECT id, term, description, category, confidence, source_url, timestamp_sec
        FROM easter_eggs WHERE song_id = ? AND deleted = 0
-       ORDER BY CASE WHEN timestamp_sec IS NULL THEN 1 ELSE 0 END, timestamp_sec, id`
+       ORDER BY CASE WHEN category = 'analysis' THEN 1 ELSE 0 END,
+                CASE WHEN timestamp_sec IS NULL THEN 1 ELSE 0 END, timestamp_sec, id`
     )
     .all(song.id);
   const clipRows = await db
@@ -425,7 +426,7 @@ app.delete('/api/easter-eggs/:id', requireAdmin, async (req, res) => {
 });
 
 // Manually add a gem (easter egg / reference / wordplay / fact) from the song page.
-const GEM_CATEGORIES = new Set(['easter_egg', 'reference', 'wordplay', 'fact']);
+const GEM_CATEGORIES = new Set(['easter_egg', 'reference', 'wordplay', 'fact', 'analysis']);
 app.post('/api/songs/:slug/easter-eggs', requireAdmin, async (req, res) => {
   const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
   if (!song) return res.status(404).json({ error: 'not found' });

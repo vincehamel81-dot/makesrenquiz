@@ -149,10 +149,12 @@ CREATE TABLE IF NOT EXISTS bio_facts (
 -- Hidden references, wordplay, and lore per song ("easter eggs", shown to
 -- users as "Gems"). Not every entry becomes a quiz question (quizzable=1
 -- only for crisp, single-term ones like "Calamity" -> Hold On) but all are
--- shown on the song detail page. category splits the four kinds of gem
+-- shown on the song detail page. category splits the five kinds of gem
 -- (easter_egg = hidden in the audio/video itself, reference = callback to
 -- another song, wordplay = double entendre/pun, fact = song-specific
--- trivia not about Ren generally — see bio_facts for that) — existing rows
+-- trivia not about Ren generally — see bio_facts for that, analysis = a
+-- longer written breakdown, shown last regardless of timestamp since it
+-- isn't a "moment in the song" the way the others are) — existing rows
 -- default to easter_egg since that's what this table originally only held.
 CREATE TABLE IF NOT EXISTS easter_eggs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,7 +162,7 @@ CREATE TABLE IF NOT EXISTS easter_eggs (
   term TEXT,
   description TEXT NOT NULL,
   timestamp_sec INTEGER, -- where in the video/audio this happens, for MM:SS display and jump-to-timestamp; null = untimed
-  category TEXT NOT NULL DEFAULT 'easter_egg' CHECK(category IN ('easter_egg','reference','wordplay','fact')),
+  category TEXT NOT NULL DEFAULT 'easter_egg' CHECK(category IN ('easter_egg','reference','wordplay','fact','analysis')),
   confidence TEXT NOT NULL DEFAULT 'theory' CHECK(confidence IN ('confirmed','theory')),
   quizzable INTEGER NOT NULL DEFAULT 0,
   source_url TEXT,

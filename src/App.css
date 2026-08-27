@@ -717,6 +717,10 @@ a.mini-badge {
   min-width: 0;
 }
 
+.gem-description {
+  white-space: pre-wrap;
+}
+
 .badge {
   display: inline-block;
   font-size: var(--text-xs);

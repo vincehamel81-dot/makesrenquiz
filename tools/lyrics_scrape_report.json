@@ -312,7 +312,7 @@
     "needsReview": false
   },
   "i-shot-the-sheriff-big-push": {
-    "title": "I shot the sheriff (Big Push)",
+    "title": "I shot the sheriff (The Big Push)",
     "matched": null,
     "needsReview": true
   },
@@ -844,5 +844,141 @@
     "matched": "Wildfire (SBTRKT Retake) by Ren",
     "url": "https://genius.com/Ren-wildfire-sbtrkt-retake-lyrics",
     "needsReview": false
+  },
+  "acustarus-the-big-push": {
+    "title": "Acustarus (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "breakdown": {
+    "title": "Breakdown",
+    "matched": null,
+    "needsReview": true
+  },
+  "can-t-stop-me": {
+    "title": "Can't Stop Me",
+    "matched": null,
+    "needsReview": true
+  },
+  "earned-it-mans-world-falling": {
+    "title": "Earned It / Man's World / Falling",
+    "matched": null,
+    "needsReview": true
+  },
+  "falling": {
+    "title": "Falling",
+    "matched": "Falling by Ken Doll ( Ren )",
+    "url": "https://genius.com/Ken-doll-ren-falling-lyrics",
+    "needsReview": false
+  },
+  "fentanyl-w-knox-hill": {
+    "title": "Fentanyl (w/ Knox Hill)",
+    "matched": null,
+    "needsReview": true
+  },
+  "girls-just-want-to-have-fun-the-big-push": {
+    "title": "Girls Just Want to Have Fun (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "got-to-run": {
+    "title": "Got to Run",
+    "matched": null,
+    "needsReview": true
+  },
+  "guns-of-brixton-the-big-push": {
+    "title": "Guns of Brixton (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "heart-attack": {
+    "title": "Heart Attack (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "higher-grounds-the-big-push": {
+    "title": "Higher Grounds (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "i-m-in-love-w-liv-sangster": {
+    "title": "I'm in love (w/ Liv Sangster)",
+    "matched": null,
+    "needsReview": true
+  },
+  "if-i-leave-tonight": {
+    "title": "If I Leave Tonight",
+    "matched": null,
+    "needsReview": true
+  },
+  "knockin-on-heaven-s-door": {
+    "title": "Knockin' on Heaven's Door (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "mambo-no-5-the-big-push": {
+    "title": "Mambo No. 5 (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "my-generation-the-big-push": {
+    "title": "My Generation (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "new-york-city": {
+    "title": "New York City",
+    "matched": null,
+    "needsReview": true
+  },
+  "okay-in-the-morning": {
+    "title": "Okay In The Morning",
+    "matched": null,
+    "needsReview": true
+  },
+  "paint-it-black-the-big-push": {
+    "title": "Paint It Black (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "passenger-kids-the-big-push": {
+    "title": "Passenger / Kids (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "rockstar": {
+    "title": "Rockstar",
+    "matched": null,
+    "needsReview": true
+  },
+  "round-town-skit-w-chinchilla": {
+    "title": "Round Town (Skit) (w/ Chinchilla)",
+    "matched": null,
+    "needsReview": true
+  },
+  "sexual-healing-w-chinchilla": {
+    "title": "Sexual Healing (w/ Chinchilla)",
+    "matched": null,
+    "needsReview": true
+  },
+  "she-makes-the-world": {
+    "title": "She Makes The World",
+    "matched": null,
+    "needsReview": true
+  },
+  "sympathy-for-the-devil-the-big-push": {
+    "title": "Sympathy for the Devil (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "these-boots-are-made-for-walkin-the-big-push": {
+    "title": "These Boots Are Made for Walkin' (The Big Push)",
+    "matched": null,
+    "needsReview": true
+  },
+  "what-kind-of-woman-is-this-the-big-push": {
+    "title": "What Kind of Woman Is This? (The Big Push)",
+    "matched": null,
+    "needsReview": true
   }
 }
