@@ -573,6 +573,13 @@ a.mini-badge {
   opacity: 0.5;
 }
 
+.gem-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .egg-delete:hover {
   opacity: 1;
   color: var(--bad);

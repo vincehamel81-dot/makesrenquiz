@@ -16,6 +16,11 @@ export default function LookupPage() {
   const [addError, setAddError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [editingTermId, setEditingTermId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
   function loadTerms() {
     fetch('/api/reference-terms')
       .then((r) => r.json())
@@ -59,6 +64,37 @@ export default function LookupPage() {
       return;
     }
     setSongDraft('');
+    loadTerms();
+  }
+
+  function startEditTerm(t) {
+    setEditingTermId(t.id);
+    setRenameDraft(t.term);
+    setRenameError('');
+  }
+
+  async function saveRename(id) {
+    const term = renameDraft.trim();
+    if (!term) return;
+    setRenaming(true);
+    setRenameError('');
+    const res = await fetch(`/api/reference-terms/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ term }),
+    });
+    setRenaming(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setRenameError(data.error || 'Failed to rename');
+      return;
+    }
+    setEditingTermId(null);
+    loadTerms();
+  }
+
+  async function removeSongFromTerm(termId, slug) {
+    await fetch(`/api/reference-terms/${termId}/songs/${slug}`, { method: 'DELETE' });
     loadTerms();
   }
 
@@ -106,19 +142,59 @@ export default function LookupPage() {
         <p>None catalogued yet.</p>
       ) : (
         <ul className="easter-eggs">
-          {terms.map((t) => (
-            <li key={t.term}>
-              <div className="gem-content">
-                <strong>{t.term}</strong> —{' '}
-                {t.songs.map((s, i) => (
-                  <span key={s.slug}>
-                    {i > 0 && ', '}
-                    <Link to={`/songs/${s.slug}`}>{s.title}</Link>
-                  </span>
-                ))}
-              </div>
-            </li>
-          ))}
+          {terms.map((t) =>
+            editingTermId === t.id ? (
+              <li key={t.id}>
+                <div className="gem-content">
+                  <input
+                    type="text"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    className="youtube-url-input"
+                  />{' '}
+                  <button onClick={() => saveRename(t.id)} disabled={renaming || !renameDraft.trim()}>
+                    {renaming ? 'Saving...' : 'Save'}
+                  </button>{' '}
+                  <button type="button" onClick={() => setEditingTermId(null)}>
+                    Cancel
+                  </button>
+                  {renameError && <p className="title-error">{renameError}</p>}
+                  <div>
+                    {t.songs.map((s) => (
+                      <span key={s.slug} className="mini-badge yes">
+                        {s.title}{' '}
+                        <button
+                          type="button"
+                          className="egg-delete"
+                          onClick={() => removeSongFromTerm(t.id, s.slug)}
+                          aria-label={`Remove ${s.title} from ${t.term}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </li>
+            ) : (
+              <li key={t.id}>
+                <div className="gem-content">
+                  <strong>{t.term}</strong> —{' '}
+                  {t.songs.map((s, i) => (
+                    <span key={s.slug}>
+                      {i > 0 && ', '}
+                      <Link to={`/songs/${s.slug}`}>{s.title}</Link>
+                    </span>
+                  ))}
+                </div>
+                {isAdmin && (
+                  <button className="btn-secondary" onClick={() => startEditTerm(t)}>
+                    Edit
+                  </button>
+                )}
+              </li>
+            )
+          )}
         </ul>
       )}
 

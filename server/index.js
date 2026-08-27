@@ -386,7 +386,7 @@ app.get('/api/history', requireAuth, async (req, res) => {
       `SELECT date(a.played_at) as day, s.active_song_count as active_song_count,
               SUM(a.points) as points, COUNT(*) as attempts, ${MAX_POINTS_SQL} as max_points
        FROM quiz_attempts a LEFT JOIN quiz_sessions s ON s.id = a.session_id
-       WHERE a.user_id = ? GROUP BY day, active_song_count ORDER BY day`
+       WHERE a.user_id = ? GROUP BY day, active_song_count ORDER BY day DESC`
     )
     .all(userId);
   const byType = await db
@@ -418,7 +418,7 @@ app.get('/api/songs/:slug/detail', async (req, res) => {
   const lyrics = await db.prepare('SELECT line_no, text, is_header FROM lyrics_lines WHERE song_id = ? ORDER BY line_no').all(song.id);
   const easterEggs = await db
     .prepare(
-      `SELECT id, term, description, category, confidence, source_url, timestamp_sec
+      `SELECT id, term, description, category, confidence, source_url, timestamp_sec, quizzable
        FROM easter_eggs WHERE song_id = ? AND deleted = 0
        ORDER BY CASE WHEN category = 'analysis' THEN 1 ELSE 0 END,
                 CASE WHEN timestamp_sec IS NULL THEN 1 ELSE 0 END, timestamp_sec, id`
@@ -506,6 +506,50 @@ app.post('/api/songs/:slug/easter-eggs', requireAdmin, async (req, res) => {
     await db.prepare(`INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`).run(song.id, info.lastInsertRowid);
   }
   res.status(201).json({ id: info.lastInsertRowid });
+});
+
+// Edit an existing gem. Text fields don't need syncing anywhere else — a
+// linked 'reference' quiz question reads term/description live off this
+// row at hydrate time, not a copy — but quizzable toggling on/off needs the
+// linked question row created or retired to match.
+app.put('/api/easter-eggs/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = await db.prepare('SELECT * FROM easter_eggs WHERE id = ? AND deleted = 0').get(id);
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  const { term, description, category, confidence, quizzable, source_url, timestamp_sec } = req.body;
+  if (!description) return res.status(400).json({ error: 'description required' });
+  const timestampValue = Number.isInteger(timestamp_sec) && timestamp_sec >= 0 ? timestamp_sec : null;
+
+  await db
+    .prepare(
+      `UPDATE easter_eggs SET term = ?, description = ?, category = ?, confidence = ?, quizzable = ?, source_url = ?, timestamp_sec = ?
+       WHERE id = ?`
+    )
+    .run(
+      term || null,
+      description,
+      GEM_CATEGORIES.has(category) ? category : 'easter_egg',
+      confidence === 'confirmed' ? 'confirmed' : 'theory',
+      quizzable ? 1 : 0,
+      source_url || null,
+      timestampValue,
+      id
+    );
+
+  const linkedQuestion = await db.prepare(`SELECT id FROM questions WHERE type = 'reference' AND easter_egg_id = ?`).get(id);
+  if (quizzable && term) {
+    if (linkedQuestion) {
+      await db.prepare(`UPDATE questions SET status = 'pending' WHERE id = ?`).run(linkedQuestion.id);
+    } else {
+      await db
+        .prepare(`INSERT INTO questions (type, song_id, easter_egg_id) VALUES ('reference', ?, ?)`)
+        .run(existing.song_id, id);
+    }
+  } else if (linkedQuestion) {
+    await db.prepare(`UPDATE questions SET status = 'retired' WHERE id = ?`).run(linkedQuestion.id);
+  }
+
+  res.json({ ok: true });
 });
 
 // Retire a single quiz question (e.g. one bad audio clip) without touching
@@ -639,7 +683,7 @@ app.get('/api/lookup', async (req, res) => {
 app.get('/api/reference-terms', async (_req, res) => {
   const rows = await db
     .prepare(
-      `SELECT rt.term as term, s.title as title, s.slug as slug
+      `SELECT rt.id as term_id, rt.term as term, s.title as title, s.slug as slug
        FROM reference_terms rt
        JOIN reference_term_songs rts ON rts.term_id = rt.id
        JOIN songs s ON s.id = rts.song_id
@@ -648,8 +692,8 @@ app.get('/api/reference-terms', async (_req, res) => {
     .all();
   const byTerm = new Map();
   for (const r of rows) {
-    if (!byTerm.has(r.term)) byTerm.set(r.term, { term: r.term, songs: [] });
-    byTerm.get(r.term).songs.push({ title: r.title, slug: r.slug });
+    if (!byTerm.has(r.term_id)) byTerm.set(r.term_id, { id: r.term_id, term: r.term, songs: [] });
+    byTerm.get(r.term_id).songs.push({ title: r.title, slug: r.slug });
   }
   res.json([...byTerm.values()]);
 });
@@ -670,6 +714,29 @@ app.post('/api/reference-terms', requireAdmin, async (req, res) => {
     .prepare('INSERT INTO reference_term_songs (term_id, song_id) VALUES (?, ?) ON CONFLICT(term_id, song_id) DO NOTHING')
     .run(termRow.id, song.id);
   res.status(201).json({ ok: true });
+});
+
+// Rename a term — applies to every song already listed under it.
+app.put('/api/reference-terms/:id', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const term = (req.body.term || '').trim();
+  if (!term) return res.status(400).json({ error: 'term required' });
+  const conflict = await db.prepare('SELECT id FROM reference_terms WHERE term = ? COLLATE NOCASE AND id != ?').get(term, id);
+  if (conflict) return res.status(409).json({ error: 'a term with that name already exists' });
+  await db.prepare('UPDATE reference_terms SET term = ? WHERE id = ?').run(term, id);
+  res.json({ ok: true });
+});
+
+// Undo a wrong song/term pairing. If that was the term's last song, the
+// row just stops appearing (the GET above only returns terms with at
+// least one song) — no separate cleanup needed, and re-adding the same
+// term later reuses this same now-empty row via POST's ON CONFLICT.
+app.delete('/api/reference-terms/:id/songs/:slug', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+  if (!song) return res.status(404).json({ error: 'not found' });
+  await db.prepare('DELETE FROM reference_term_songs WHERE term_id = ? AND song_id = ?').run(id, song.id);
+  res.json({ ok: true });
 });
 
 // Per-song accuracy broken down into lyrics / audio-clip / other-fact

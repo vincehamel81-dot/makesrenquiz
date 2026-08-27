@@ -56,6 +56,7 @@ export default function SongDetailPage() {
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [addingEgg, setAddingEgg] = useState(false);
+  const [editingEggId, setEditingEggId] = useState(null);
   const [eggForm, setEggForm] = useState(EMPTY_EGG_FORM);
   const [showVideo, setShowVideo] = useState(false);
   const [videoStartSec, setVideoStartSec] = useState(0);
@@ -182,14 +183,30 @@ export default function SongDetailPage() {
     e.preventDefault();
     if (!eggForm.description.trim()) return;
     if (eggForm.timestamp.trim() && parseMMSS(eggForm.timestamp) === null) return;
-    await fetch(`/api/songs/${slug}/easter-eggs`, {
-      method: 'POST',
+    const url = editingEggId ? `/api/easter-eggs/${editingEggId}` : `/api/songs/${slug}/easter-eggs`;
+    await fetch(url, {
+      method: editingEggId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...eggForm, timestamp_sec: parseMMSS(eggForm.timestamp) }),
     });
     setEggForm(EMPTY_EGG_FORM);
     setAddingEgg(false);
+    setEditingEggId(null);
     load();
+  }
+
+  function startEditEgg(e) {
+    setEggForm({
+      term: e.term || '',
+      description: e.description,
+      category: e.category,
+      confidence: e.confidence,
+      quizzable: !!e.quizzable,
+      source_url: e.source_url || '',
+      timestamp: e.timestamp_sec != null ? formatMMSS(e.timestamp_sec) : '',
+    });
+    setEditingEggId(e.id);
+    setAddingEgg(true);
   }
 
   return (
@@ -396,9 +413,14 @@ export default function SongDetailPage() {
                 )}
               </div>
               {isAdmin && (
-                <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this gem">
-                  ✕
-                </button>
+                <div className="gem-actions">
+                  <button className="btn-secondary" onClick={() => startEditEgg(e)}>
+                    Edit
+                  </button>
+                  <button className="egg-delete" onClick={() => deleteEgg(e.id)} title="Remove this gem">
+                    ✕
+                  </button>
+                </div>
               )}
             </li>
           ))}
@@ -409,6 +431,7 @@ export default function SongDetailPage() {
         <button onClick={() => setAddingEgg(true)}>+ Add gem</button>
       ) : (
         <form className="egg-form" onSubmit={submitEgg}>
+          {editingEggId && <p className="song-meta">Editing gem #{editingEggId}</p>}
           <input
             type="text"
             placeholder="Term (optional, e.g. a specific word/phrase)"
@@ -464,11 +487,12 @@ export default function SongDetailPage() {
             Use as a quiz question ("Which song mentions '{eggForm.term || '...'}' ?") — needs a term
           </label>
           <div className="actions">
-            <button type="submit">Save</button>
+            <button type="submit">{editingEggId ? 'Save changes' : 'Save'}</button>
             <button
               type="button"
               onClick={() => {
                 setAddingEgg(false);
+                setEditingEggId(null);
                 setEggForm(EMPTY_EGG_FORM);
               }}
             >
