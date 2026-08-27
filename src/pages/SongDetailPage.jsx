@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import ClipPlayer from '../components/ClipPlayer';
 import { useAuth } from '../lib/AuthContext';
+import { youtubeVideoId } from '../lib/youtube';
 
 function formatTime(sec) {
   const m = Math.floor(sec / 60);
@@ -22,12 +23,6 @@ function parseMMSS(text) {
   const match = (text || '').trim().match(/^(\d{1,2}):([0-5]\d)$/);
   if (!match) return null;
   return Number(match[1]) * 60 + Number(match[2]);
-}
-
-function youtubeVideoId(url) {
-  if (!url) return null;
-  const match = url.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
-  return match ? match[1] : null;
 }
 
 function isSoundCloudUrl(url) {

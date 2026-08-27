@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { usePersistedState } from '../lib/usePersistedState';
 
 const COLUMNS = [
@@ -73,7 +73,10 @@ export default function SongKnowledgePage() {
   return (
     <div className="song-knowledge">
       <h2>Song Knowledge</h2>
-      <p className="song-meta">Click a column header to sort. Click a row to open that song.</p>
+      <p className="song-meta">
+        Click a column header to sort. Click a row to open that song. Want a fresh start? Reset your stats from{' '}
+        <Link to="/profile">Profile</Link>.
+      </p>
       {anyKnown && (
         <button className="btn-secondary" onClick={() => setHideUnchecked((v) => !v)}>
           {hideUnchecked ? 'Show all songs' : 'Show only my songs'}

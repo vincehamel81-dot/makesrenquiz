@@ -940,6 +940,30 @@ a.mini-badge {
   flex-direction: row;
 }
 
+.rank-now-playing {
+  margin-top: 12px;
+}
+
+.rank-now-playing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+  margin-bottom: 6px;
+}
+
+.rank-now-playing-header button {
+  background: none;
+  border: none;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.rank-now-playing-header button:hover {
+  opacity: 1;
+}
+
 .rank-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -13,59 +13,37 @@ import {
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Modal from './Modal';
+import { youtubeVideoId } from '../lib/youtube';
 
 function byTitle(a, b) {
   return a.title.localeCompare(b.title);
 }
 
-// Compact play/stop control for a row — same "first 5s only" idea as
-// ClipPlayer, just an icon rather than a labeled button so it fits a dense
-// list of up to ~170 rows. Rows spread dnd-kit's drag {...listeners} across
-// the whole element, so this needs its own pointerdown stopPropagation like
-// the remove button below, or a click here would start a drag instead.
-function PlayButton({ src }) {
-  const audioRef = useRef(null);
-  const timeoutRef = useRef(null);
-  const [playing, setPlaying] = useState(false);
-
-  useEffect(() => () => clearTimeout(timeoutRef.current), []);
-
-  if (!src) return <span className="rank-play rank-play-empty" />;
-
-  function toggle() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (playing) {
-      clearTimeout(timeoutRef.current);
-      audio.pause();
-      setPlaying(false);
-      return;
-    }
-    audio.currentTime = 0;
-    audio.play();
-    setPlaying(true);
-    timeoutRef.current = setTimeout(() => {
-      audio.pause();
-      setPlaying(false);
-    }, 5000);
-  }
-
+// Toggles the shared "now playing" embed (see RankingModal) rather than
+// managing its own audio — a full video makes more sense for recognizing
+// a song you're ranking than a blind 5s clip did. Rows spread dnd-kit's
+// drag {...listeners} across the whole element, so this needs its own
+// pointerdown stopPropagation like the remove button below, or a click
+// here would start a drag instead.
+function PlayButton({ song, nowPlayingId, onToggle }) {
+  const videoId = youtubeVideoId(song.youtube_url);
+  if (!videoId) return <span className="rank-play rank-play-empty" />;
+  const playing = nowPlayingId === song.id;
   return (
     <button
       type="button"
       className="rank-play"
       onPointerDown={(e) => e.stopPropagation()}
-      onClick={toggle}
-      title={playing ? 'Stop' : 'Play clip (5s)'}
-      aria-label={playing ? 'Stop' : 'Play clip'}
+      onClick={() => onToggle(playing ? null : song)}
+      title={playing ? 'Stop' : 'Play video'}
+      aria-label={playing ? 'Stop' : 'Play video'}
     >
-      <audio ref={audioRef} src={src} preload="none" onEnded={() => setPlaying(false)} />
       {playing ? '■' : '▶'}
     </button>
   );
 }
 
-function RankedRow({ song, index, onRemove, isOver }) {
+function RankedRow({ song, index, onRemove, isOver, nowPlayingId, onTogglePlay }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: song.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
@@ -77,7 +55,7 @@ function RankedRow({ song, index, onRemove, isOver }) {
       {...listeners}
     >
       <span className="rank-position">{index + 1}</span>
-      <PlayButton src={song.sample_clip_url} />
+      <PlayButton song={song} nowPlayingId={nowPlayingId} onToggle={onTogglePlay} />
       <span className="rank-title">{song.title}</span>
       <button
         type="button"
@@ -92,25 +70,48 @@ function RankedRow({ song, index, onRemove, isOver }) {
   );
 }
 
-function AvailableRow({ song }) {
+function AvailableRow({ song, nowPlayingId, onTogglePlay }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: song.id });
   const style = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.4 : 1 };
   return (
     <div ref={setNodeRef} style={style} className="avail-row" {...attributes} {...listeners}>
-      <PlayButton src={song.sample_clip_url} />
+      <PlayButton song={song} nowPlayingId={nowPlayingId} onToggle={onTogglePlay} />
       {song.title}
     </div>
   );
 }
 
-function RankedColumn({ ranked, onRemove, overId }) {
+// Its own component (not just a ref inline in the parent) so useDroppable
+// stays a normal top-level hook call regardless of the parent's loading-state
+// early return — hooks can't follow a conditional return in the same
+// component.
+function AvailableColumn({ songs, nowPlayingId, onTogglePlay }) {
+  const { setNodeRef } = useDroppable({ id: 'available-dropzone' });
+  return (
+    <div ref={setNodeRef} className="avail-list">
+      {songs.map((song) => (
+        <AvailableRow key={song.id} song={song} nowPlayingId={nowPlayingId} onTogglePlay={onTogglePlay} />
+      ))}
+    </div>
+  );
+}
+
+function RankedColumn({ ranked, onRemove, overId, nowPlayingId, onTogglePlay }) {
   const { setNodeRef, isOver: isOverEmptyZone } = useDroppable({ id: 'ranked-dropzone' });
   return (
     <div ref={setNodeRef} className={`rank-list${isOverEmptyZone && ranked.length === 0 ? ' rank-list-over' : ''}`}>
       <SortableContext items={ranked.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         {ranked.length === 0 && <p className="rank-empty">Drag songs here to rank them.</p>}
         {ranked.map((song, i) => (
-          <RankedRow key={song.id} song={song} index={i} onRemove={onRemove} isOver={overId === song.id} />
+          <RankedRow
+            key={song.id}
+            song={song}
+            index={i}
+            onRemove={onRemove}
+            isOver={overId === song.id}
+            nowPlayingId={nowPlayingId}
+            onTogglePlay={onTogglePlay}
+          />
         ))}
       </SortableContext>
     </div>
@@ -129,6 +130,7 @@ export default function RankingModal({ onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [overId, setOverId] = useState(null);
+  const [nowPlaying, setNowPlaying] = useState(null);
 
   useEffect(() => {
     fetch('/api/songs?stats=1')
@@ -156,6 +158,18 @@ export default function RankingModal({ onClose, onSaved }) {
     if (!over) return;
 
     const isFromRanked = rankedIndexOf(active.id) !== -1;
+
+    // Dropping back on Available cancels the move — whether that's an
+    // already-ranked song being sent back out, or a song you were about to
+    // add but changed your mind on. Matches the "drag it back where it came
+    // from to cancel" convention most sortable-list UIs use.
+    if (over.id === 'available-dropzone') {
+      if (isFromRanked) {
+        const song = ranked.find((s) => s.id === active.id);
+        if (song) handleRemove(song);
+      }
+      return;
+    }
 
     if (isFromRanked) {
       if (over.id === 'ranked-dropzone') return;
@@ -210,6 +224,24 @@ export default function RankingModal({ onClose, onSaved }) {
   return (
     <Modal title="Rank your songs" onClose={onClose}>
       <p className="song-meta">Drag songs from Available into Ranked, top to bottom in order of preference.</p>
+      {nowPlaying && (
+        <div className="rank-now-playing">
+          <div className="rank-now-playing-header">
+            <span>Now playing: {nowPlaying.title}</span>
+            <button type="button" onClick={() => setNowPlaying(null)} aria-label="Close video">
+              ✕
+            </button>
+          </div>
+          <div className="video-embed">
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeVideoId(nowPlaying.youtube_url)}?autoplay=1`}
+              title={`${nowPlaying.title} on YouTube`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -220,16 +252,18 @@ export default function RankingModal({ onClose, onSaved }) {
         <div className="rank-columns">
           <div className="rank-column">
             <h3>Ranked ({ranked.length})</h3>
-            <RankedColumn ranked={ranked} onRemove={handleRemove} overId={overId} />
+            <RankedColumn
+              ranked={ranked}
+              onRemove={handleRemove}
+              overId={overId}
+              nowPlayingId={nowPlaying?.id}
+              onTogglePlay={setNowPlaying}
+            />
           </div>
           <div className="rank-column">
             <h3>Available ({available.length})</h3>
             <input type="text" placeholder="Filter songs..." value={filter} onChange={(e) => setFilter(e.target.value)} />
-            <div className="avail-list">
-              {filteredAvailable.map((song) => (
-                <AvailableRow key={song.id} song={song} />
-              ))}
-            </div>
+            <AvailableColumn songs={filteredAvailable} nowPlayingId={nowPlaying?.id} onTogglePlay={setNowPlaying} />
           </div>
         </div>
         <DragOverlay>{activeSong && <div className="rank-row drag-overlay">{activeSong.title}</div>}</DragOverlay>

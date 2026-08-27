@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import TrendChart from '../components/TrendChart';
 
 export default function HistoryPage() {
@@ -15,6 +16,9 @@ export default function HistoryPage() {
   return (
     <div className="history">
       <h2>Accuracy trend</h2>
+      <p className="song-meta">
+        Want a fresh start? Reset your stats from <Link to="/profile">Profile</Link>.
+      </p>
       <TrendChart daily={data.daily} />
 
       <h2>Score history</h2>
