@@ -18,6 +18,8 @@ export default function ProfilePage() {
   const [nameSaved, setNameSaved] = useState(false);
   const [nameError, setNameError] = useState('');
   const [resettingStats, setResettingStats] = useState(false);
+  const [keepLeaderboard, setKeepLeaderboard] = useState(true);
+  const [savingExpertMode, setSavingExpertMode] = useState(false);
 
   const [prefs, setPrefs] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -92,12 +94,12 @@ export default function ProfilePage() {
   }
 
   async function resetStats() {
-    const ok = confirm(
-      "Reset all your quiz stats? This permanently clears your quiz history — Song Knowledge progress, History, and Leaderboard eligibility all go back to zero. Your ratings and song checklist are NOT affected. This can't be undone."
-    );
-    if (!ok) return;
+    const msg = keepLeaderboard
+      ? "Reset your quiz stats? This clears Song Knowledge and History — except the one completed session behind your current Leaderboard score stays (so that score isn't lost, but its ~25 questions will still show up in Song Knowledge/History rather than a true zero). Your ratings and song checklist are NOT affected. This can't be undone."
+      : "Reset ALL your quiz stats? This permanently clears your quiz history — Song Knowledge, History, AND your Leaderboard score all go back to zero. Your ratings and song checklist are NOT affected. This can't be undone.";
+    if (!confirm(msg)) return;
     setResettingStats(true);
-    await fetch('/api/history', { method: 'DELETE' });
+    await fetch(`/api/history?keep_leaderboard=${keepLeaderboard}`, { method: 'DELETE' });
     setResettingStats(false);
   }
 
@@ -132,6 +134,19 @@ export default function ProfilePage() {
     setPrefs(draft);
     setSaving(false);
     setSaved(true);
+  }
+
+  async function toggleExpertMode() {
+    setSavingExpertMode(true);
+    const nextValue = !prefs.expert_mode;
+    await fetch('/api/preferences/expert-mode', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expert_mode: nextValue }),
+    });
+    setPrefs((p) => ({ ...p, expert_mode: nextValue }));
+    setDraft((d) => ({ ...d, expert_mode: nextValue }));
+    setSavingExpertMode(false);
   }
 
   function toggleSong(song) {
@@ -212,6 +227,12 @@ export default function ProfilePage() {
       </button>
       {saved && <span className="save-confirm"> Saved.</span>}
 
+      <label className="checkbox-toggle">
+        <input type="checkbox" checked={!!prefs.expert_mode} disabled={savingExpertMode} onChange={toggleExpertMode} />
+        Expert mode — audio clips get shorter (no context) and are worth double points. Doesn't change lyrics or
+        trivia yet.
+      </label>
+
       <h3>My ratings</h3>
       <p className="song-meta">
         Drag your favorite songs into order instead of typing a number per song — top of the list scores highest.
@@ -285,9 +306,13 @@ export default function ProfilePage() {
 
       <h3>Reset stats</h3>
       <p className="song-meta">
-        Clears your quiz history — Song Knowledge, History, and Leaderboard eligibility all go back to zero. Your
-        ratings and song checklist aren't affected.
+        Clears your quiz history — Song Knowledge and History go back to (near) zero. Your ratings and song
+        checklist aren't affected.
       </p>
+      <label className="checkbox-toggle">
+        <input type="checkbox" checked={keepLeaderboard} onChange={(e) => setKeepLeaderboard(e.target.checked)} />
+        Keep my current Leaderboard score (leaves that one session's ~25 questions in Song Knowledge/History)
+      </label>
       <button className="danger-link" onClick={resetStats} disabled={resettingStats}>
         {resettingStats ? 'Resetting...' : 'Reset my stats'}
       </button>

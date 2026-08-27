@@ -62,11 +62,15 @@ CREATE TABLE IF NOT EXISTS user_songs (
 -- Per-user audio/lyric/trivia quiz mix. Missing row = use the default
 -- (60/38/2, matching the previous global constant) — only created once a
 -- user actually saves a custom ratio.
+-- expert_mode: audio questions draw from the 'hard' clip pool instead of
+-- 'normal' (see questions.difficulty), and audio points double. Global
+-- per-user toggle, not per-song — lyrics/bio are unaffected for now.
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id INTEGER PRIMARY KEY REFERENCES users(id),
   audio_pct INTEGER NOT NULL,
   lyric_pct INTEGER NOT NULL,
   trivia_pct INTEGER NOT NULL,
+  expert_mode INTEGER NOT NULL DEFAULT 0,
   CHECK (audio_pct + lyric_pct + trivia_pct = 100)
 );
 
@@ -120,6 +124,10 @@ CREATE TABLE IF NOT EXISTS questions (
   start_sec REAL,
   duration_sec REAL DEFAULT 5,
   file_path TEXT,
+  -- audio-only: 'hard' clips are the short, no-context Expert Mode pool
+  -- (see user_preferences.expert_mode) — a separate set of rows per song,
+  -- not a difficulty tier applied to the existing 'normal' ones.
+  difficulty TEXT NOT NULL DEFAULT 'normal' CHECK(difficulty IN ('normal','hard')),
   -- lyric-only
   start_line_no INTEGER,
   context_lines INTEGER DEFAULT 1,

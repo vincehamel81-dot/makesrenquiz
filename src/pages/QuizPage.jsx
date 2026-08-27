@@ -17,8 +17,12 @@ const FORCE_CHOICE_TYPES = new Set(['bio']);
 // hardest to pin down cold, then clips, then everything else).
 const TYPE_POINTS = { audio: 45, lyric: 50 };
 const DEFAULT_POINTS = 40; // theme/follow-up/album/collaborator/bio/reference
-function pointsForType(type) {
-  return TYPE_POINTS[type] ?? DEFAULT_POINTS;
+// Expert Mode only touches audio (shorter, no-context clips — see
+// user_preferences.expert_mode) — lyrics/trivia points are unaffected for
+// now, so the doubling only ever applies when type === 'audio'.
+function pointsForType(type, expertMode) {
+  const base = TYPE_POINTS[type] ?? DEFAULT_POINTS;
+  return type === 'audio' && expertMode ? base * 2 : base;
 }
 // Lyric points still drop with each "...more" reveal — full credit for
 // nailing it cold, less for peeking at more context first.
@@ -28,6 +32,9 @@ const MAX_LYRIC_REVEAL_TIER = LYRIC_REVEAL_POINTS.length - 1;
 // earns a flat consolation score, the same across every type — it reflects
 // recognition, not recall, so it doesn't scale with how hard the type is.
 const CHOICE_FALLBACK_POINTS = 20;
+function choiceFallbackPoints(type, expertMode) {
+  return type === 'audio' && expertMode ? CHOICE_FALLBACK_POINTS * 2 : CHOICE_FALLBACK_POINTS;
+}
 
 async function fetchChoices(q) {
   const res = await fetch('/api/quiz/choices', {
@@ -53,11 +60,15 @@ export default function QuizPage({ songTitles }) {
   const [lyricTier, setLyricTier] = useState(0);
   const [lyricLines, setLyricLines] = useState(null);
   const [expandedType, setExpandedType] = useState(null);
+  const [expertMode, setExpertMode] = useState(false);
 
   useEffect(() => {
     fetch('/api/user-songs')
       .then((r) => r.json())
       .then(({ song_ids }) => setNeedsOnboarding(song_ids.length === 0));
+    fetch('/api/preferences')
+      .then((r) => r.json())
+      .then((p) => setExpertMode(!!p.expert_mode));
   }, []);
 
   useEffect(() => {
@@ -214,7 +225,7 @@ export default function QuizPage({ songTitles }) {
   function submitFreeAnswer() {
     if (!answer.trim()) return;
     const wasCorrect = answerMatches(answer, q.correct_answer);
-    const points = wasCorrect ? (q.type === 'lyric' ? LYRIC_REVEAL_POINTS[lyricTier] : pointsForType(q.type)) : 0;
+    const points = wasCorrect ? (q.type === 'lyric' ? LYRIC_REVEAL_POINTS[lyricTier] : pointsForType(q.type, expertMode)) : 0;
     recordAttempt({ userAnswer: answer, mode: 'free', wasCorrect, points });
   }
 
@@ -243,7 +254,7 @@ export default function QuizPage({ songTitles }) {
       userAnswer: choice,
       mode: isForceChoice ? 'free' : 'choice',
       wasCorrect,
-      points: wasCorrect ? (isForceChoice ? pointsForType(q.type) : CHOICE_FALLBACK_POINTS) : 0,
+      points: wasCorrect ? (isForceChoice ? pointsForType(q.type, expertMode) : choiceFallbackPoints(q.type, expertMode)) : 0,
     });
   }
 

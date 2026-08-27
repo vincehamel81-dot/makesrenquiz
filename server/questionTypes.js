@@ -21,6 +21,11 @@ async function bucketTargetFor(userId) {
   return { audio: prefs.audio_pct / 100, lyric: prefs.lyric_pct / 100, trivia: prefs.trivia_pct / 100 };
 }
 
+async function expertModeFor(userId) {
+  const prefs = await db.prepare('SELECT expert_mode FROM user_preferences WHERE user_id = ?').get(userId);
+  return !!prefs?.expert_mode;
+}
+
 // BLOB_PUBLIC_BASE_URL is set once clips are synced to Vercel Blob
 // (tools/syncAudioToBlob.js); unset locally falls back to the Express
 // /audio static route serving public/audio directly. Exported since
@@ -135,8 +140,10 @@ export async function buildChoices(type, correctAnswer, questionId, userId) {
 // so the same clip/line doesn't come up again and again. Scoped to a user's
 // checked songs: audio/lyric rows require the song to be checked; trivia-bucket
 // rows are eligible if they're song-agnostic (song_id NULL, e.g. general Ren
-// bio facts) or their song is checked.
-async function eligibleRows(userId) {
+// bio facts) or their song is checked. expertMode switches which audio
+// difficulty tier is in play — 'hard' clips instead of 'normal' ones, not
+// both at once (see user_preferences.expert_mode).
+async function eligibleRows(userId, expertMode) {
   const checkedRows = await db.prepare('SELECT song_id FROM user_songs WHERE user_id = ?').all(userId);
   const checkedIds = new Set(checkedRows.map((r) => r.song_id));
   const rows = await db
@@ -147,7 +154,9 @@ async function eligibleRows(userId) {
          AND (type != 'lyric' OR start_line_no IS NOT NULL)`
     )
     .all();
+  const wantDifficulty = expertMode ? 'hard' : 'normal';
   return rows.filter((row) => {
+    if (row.type === 'audio' && row.difficulty !== wantDifficulty) return false;
     if (row.type === 'audio' || row.type === 'lyric') return checkedIds.has(row.song_id);
     return row.song_id === null || checkedIds.has(row.song_id);
   });
@@ -206,7 +215,8 @@ function bucketTargets(count, bucketTarget) {
 }
 
 export async function generateSession(count = 30, userId) {
-  const rows = await eligibleRows(userId);
+  const expertMode = await expertModeFor(userId);
+  const rows = await eligibleRows(userId, expertMode);
   if (rows.length === 0) return [];
 
   const byBucket = { audio: [], lyric: [], trivia: [] };

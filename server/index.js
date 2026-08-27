@@ -200,15 +200,15 @@ app.delete('/api/user-songs/:songId', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-const DEFAULT_PREFERENCES = { audio_pct: 60, lyric_pct: 38, trivia_pct: 2 };
+const DEFAULT_PREFERENCES = { audio_pct: 60, lyric_pct: 38, trivia_pct: 2, expert_mode: false };
 
 // Your audio/lyric/trivia quiz mix. No saved row yet just means "use the
 // defaults" — same pattern as ratings, nothing is written until you save.
 app.get('/api/preferences', requireAuth, async (req, res) => {
   const prefs = await db
-    .prepare('SELECT audio_pct, lyric_pct, trivia_pct FROM user_preferences WHERE user_id = ?')
+    .prepare('SELECT audio_pct, lyric_pct, trivia_pct, expert_mode FROM user_preferences WHERE user_id = ?')
     .get(currentUserId(req));
-  res.json(prefs ?? DEFAULT_PREFERENCES);
+  res.json(prefs ? { ...prefs, expert_mode: !!prefs.expert_mode } : DEFAULT_PREFERENCES);
 });
 
 app.put('/api/preferences', requireAuth, async (req, res) => {
@@ -226,6 +226,24 @@ app.put('/api/preferences', requireAuth, async (req, res) => {
      ON CONFLICT(user_id) DO UPDATE SET audio_pct = excluded.audio_pct, lyric_pct = excluded.lyric_pct, trivia_pct = excluded.trivia_pct`
   ).run(currentUserId(req), audio_pct, lyric_pct, trivia_pct);
   res.json({ ok: true, audio_pct, lyric_pct, trivia_pct });
+});
+
+// Expert Mode — a standalone toggle (not part of the ratio save above, so
+// flipping it doesn't require re-sending/re-validating the audio/lyric/
+// trivia split). Audio questions draw from the 'hard' clip pool and score
+// double while it's on — see questionTypes.js's eligibleRows.
+app.put('/api/preferences/expert-mode', requireAuth, async (req, res) => {
+  const expertMode = req.body.expert_mode ? 1 : 0;
+  const userId = currentUserId(req);
+  const existing = await db.prepare('SELECT 1 FROM user_preferences WHERE user_id = ?').get(userId);
+  if (existing) {
+    await db.prepare('UPDATE user_preferences SET expert_mode = ? WHERE user_id = ?').run(expertMode, userId);
+  } else {
+    await db
+      .prepare(`INSERT INTO user_preferences (user_id, audio_pct, lyric_pct, trivia_pct, expert_mode) VALUES (?, ?, ?, ?, ?)`)
+      .run(userId, DEFAULT_PREFERENCES.audio_pct, DEFAULT_PREFERENCES.lyric_pct, DEFAULT_PREFERENCES.trivia_pct, expertMode);
+  }
+  res.json({ ok: true, expert_mode: !!expertMode });
 });
 
 // A fresh batch of quiz questions, adaptively sampled from the question bank,
@@ -309,9 +327,45 @@ app.get('/api/questions/:id/lyric-lines', requireAuth, async (req, res) => {
 // song checklist live in separate tables and are untouched.
 app.delete('/api/history', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
-  await db.prepare('DELETE FROM quiz_attempts WHERE user_id = ?').run(userId);
-  await db.prepare('DELETE FROM quiz_sessions WHERE user_id = ?').run(userId);
-  res.json({ ok: true });
+  let keepSessionId = null;
+
+  // Optionally preserve the one session behind your current Leaderboard
+  // score — same "best completed SESSION_LENGTH-question session" logic
+  // GET /api/leaderboard uses, just scoped to this user. There's no
+  // separately-stored score to protect otherwise; it's always computed
+  // live from quiz_attempts, so "keep the score" really means "keep the
+  // attempts that produce it" — those ~SESSION_LENGTH rows will still show
+  // up in Song Knowledge/History rather than a true zero.
+  if (req.query.keep_leaderboard === 'true') {
+    const rows = await db
+      .prepare(
+        `SELECT s.id as session_id, s.active_song_count as active_song_count,
+                SUM(a.points) as session_points, COUNT(a.id) as answered
+         FROM quiz_sessions s JOIN quiz_attempts a ON a.session_id = s.id
+         WHERE s.user_id = ? AND s.requested_count = ?
+         GROUP BY s.id HAVING answered = ?`
+      )
+      .all(userId, SESSION_LENGTH, SESSION_LENGTH);
+    let bestScore = -1;
+    for (const r of rows) {
+      const score = Math.round((r.active_song_count / 2) * r.session_points);
+      if (score > bestScore) {
+        bestScore = score;
+        keepSessionId = r.session_id;
+      }
+    }
+  }
+
+  if (keepSessionId) {
+    await db
+      .prepare('DELETE FROM quiz_attempts WHERE user_id = ? AND (session_id IS NULL OR session_id != ?)')
+      .run(userId, keepSessionId);
+    await db.prepare('DELETE FROM quiz_sessions WHERE user_id = ? AND id != ?').run(userId, keepSessionId);
+  } else {
+    await db.prepare('DELETE FROM quiz_attempts WHERE user_id = ?').run(userId);
+    await db.prepare('DELETE FROM quiz_sessions WHERE user_id = ?').run(userId);
+  }
+  res.json({ ok: true, kept_session_id: keepSessionId });
 });
 
 // History: daily totals + accuracy by question type. "Accuracy" here is
