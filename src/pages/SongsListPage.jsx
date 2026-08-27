@@ -36,6 +36,40 @@ function sortValue(song, key) {
 
 const EMPTY_ADD_FORM = { title: '', youtube_url: '', album: '', collaborators: '' };
 
+const CSV_COLUMNS = [
+  ['title', 'Title'],
+  ['slug', 'Slug'],
+  ['album_name', 'Album'],
+  ['known', 'Known'],
+  ['lyricLineCount', 'Lyric lines'],
+  ['clipCount', 'Clips'],
+  ['easterEggCount', 'Gems'],
+  ['rating', 'Rating'],
+  ['youtube_url', 'YouTube URL'],
+];
+
+function csvField(value) {
+  const s = value === null || value === undefined ? '' : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportSongsCsv(songs) {
+  const header = CSV_COLUMNS.map(([, label]) => csvField(label)).join(',');
+  const rows = songs.map((s) =>
+    CSV_COLUMNS.map(([key]) => csvField(key === 'known' ? (s.known ? 'yes' : 'no') : s[key])).join(',')
+  );
+  const csv = [header, ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `renquiz-songs-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function SongsListPage() {
   const { isAdmin } = useAuth();
   const [songs, setSongs] = useState([]);
@@ -122,9 +156,13 @@ export default function SongsListPage() {
             {adding ? 'Cancel' : '+ Add song'}
           </button>
         )}
+        <button className="btn-secondary" onClick={() => exportSongsCsv(songs)} disabled={songs.length === 0}>
+          Export CSV
+        </button>
       </div>
       <p className="song-meta song-list-hint">
-        Manage which songs you're quizzed on from <Link to="/profile">Profile</Link>.
+        {songs.length} songs total{visible.length !== songs.length ? ` (${visible.length} shown)` : ''} — manage
+        which songs you're quizzed on from <Link to="/profile">Profile</Link>.
       </p>
 
       {isAdmin && adding && (
