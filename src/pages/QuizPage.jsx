@@ -1,39 +1,44 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import SongAutocomplete from '../components/SongAutocomplete';
+import Autocomplete from '../components/Autocomplete';
 import ClipPlayer from '../components/ClipPlayer';
 import { answerMatches } from '../lib/normalize';
 
+// bio now goes through the same free-text-first flow as these (autocomplete
+// against the full set of bio answers instead of song titles) — see
+// bioAnswers prop and isBioAnswer below.
 const SONG_ANSWER_TYPES = new Set(['audio', 'lyric', 'theme', 'follow-up']);
-// Types whose correct_answer is a full sentence/prose fact — typing it
-// exactly was never a fair bar, so these skip straight to 4 choices and
-// award full credit (there's no "lesser" free-text path being avoided).
-const FORCE_CHOICE_TYPES = new Set(['bio']);
 // Session length isn't set here — omitting `count` lets the server apply
 // its own default (server/index.js's SESSION_LENGTH), which is also the
 // single source of truth leaderboard eligibility is checked against. One
 // constant to change, not two kept in sync by hand.
-// Hardcoded per-type point values (lyrics score highest since they're the
-// hardest to pin down cold, then clips, then everything else).
-const TYPE_POINTS = { audio: 45, lyric: 50 };
-const DEFAULT_POINTS = 40; // theme/follow-up/album/collaborator/bio/reference
-// Expert Mode only touches audio (shorter, no-context clips — see
-// user_preferences.expert_mode) — lyrics/trivia points are unaffected for
-// now, so the doubling only ever applies when type === 'audio'.
+// Hardcoded per-type point values. Audio's Expert Mode value (95) is a fixed
+// number, not a multiplier on the normal value — a flat 2x let hard-mode
+// scores blow past the max_points denominator server-side (see
+// server/index.js's MAX_POINTS_SQL), showing >100% accuracy on History.
+const DEFAULT_POINTS = 40; // theme/follow-up/album/collaborator/reference
+const BIO_POINTS = 60;
 function pointsForType(type, expertMode) {
-  const base = TYPE_POINTS[type] ?? DEFAULT_POINTS;
-  return type === 'audio' && expertMode ? base * 2 : base;
+  if (type === 'audio') return expertMode ? 95 : 60;
+  if (type === 'bio') return BIO_POINTS;
+  return DEFAULT_POINTS;
 }
 // Lyric points still drop with each "...more" reveal — full credit for
 // nailing it cold, less for peeking at more context first.
-const LYRIC_REVEAL_POINTS = [50, 30, 15];
+const LYRIC_REVEAL_POINTS = [100, 70, 50];
 const MAX_LYRIC_REVEAL_TIER = LYRIC_REVEAL_POINTS.length - 1;
 // A correct pick from the 4-choice fallback (gave up on free-text first)
-// earns a flat consolation score, the same across every type — it reflects
-// recognition, not recall, so it doesn't scale with how hard the type is.
-const CHOICE_FALLBACK_POINTS = 20;
+// earns a flat consolation score reflecting recognition, not recall. It
+// still varies by type/difficulty — a bigger "cold" value implies a bigger
+// gap to the fallback value too.
+const CHOICE_FALLBACK_POINTS = 20; // theme/follow-up/album/collaborator/reference
+const LYRIC_CHOICE_FALLBACK_POINTS = 45;
+const BIO_CHOICE_FALLBACK_POINTS = 30;
 function choiceFallbackPoints(type, expertMode) {
-  return type === 'audio' && expertMode ? CHOICE_FALLBACK_POINTS * 2 : CHOICE_FALLBACK_POINTS;
+  if (type === 'audio') return expertMode ? 40 : 25;
+  if (type === 'lyric') return LYRIC_CHOICE_FALLBACK_POINTS;
+  if (type === 'bio') return BIO_CHOICE_FALLBACK_POINTS;
+  return CHOICE_FALLBACK_POINTS;
 }
 
 async function fetchChoices(q) {
@@ -45,7 +50,7 @@ async function fetchChoices(q) {
   return res.json();
 }
 
-export default function QuizPage({ songTitles }) {
+export default function QuizPage({ songTitles, bioAnswers }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(null); // null = still checking
   const [questions, setQuestions] = useState(null);
   const [sessionId, setSessionId] = useState(null);
@@ -83,15 +88,6 @@ export default function QuizPage({ songTitles }) {
   }, [needsOnboarding]);
 
   const q = questions ? questions[index] : null;
-  const isForceChoice = q && FORCE_CHOICE_TYPES.has(q.type);
-
-  // Force-choice types (bio) preload their options as soon as the question
-  // appears, since there's no free-text step to opt out of first.
-  useEffect(() => {
-    if (q && FORCE_CHOICE_TYPES.has(q.type)) {
-      fetchChoices(q).then(setChoices);
-    }
-  }, [q?.id]);
 
   if (needsOnboarding === null) return <p>Loading...</p>;
   if (needsOnboarding) {
@@ -112,7 +108,7 @@ export default function QuizPage({ songTitles }) {
     );
   }
 
-  // Raw per-type point values (TYPE_POINTS etc. above) aren't what shows up
+  // Raw per-type point values (pointsForType etc. above) aren't what shows up
   // on the Leaderboard — that's (songs checked / 2) * points earned (see
   // GET /api/leaderboard). Scaling the live/session-total score the same
   // way means the number you watch climb during a session is the same
@@ -246,15 +242,13 @@ export default function QuizPage({ songTitles }) {
   function pickChoice(choice) {
     setSelectedChoice(choice);
     const wasCorrect = choice === q.correct_answer;
-    // Force-choice types have no free-text path to fall back from, so a
-    // correct pick here is the primary signal of knowing it, not a guess —
-    // full credit. A regular choice-fallback (gave up on free-text first)
-    // earns the flat consolation score instead.
+    // Every type now has a free-text step first, so a correct choice pick is
+    // always the reduced-credit fallback (gave up on free-text/autocomplete).
     recordAttempt({
       userAnswer: choice,
-      mode: isForceChoice ? 'free' : 'choice',
+      mode: 'choice',
       wasCorrect,
-      points: wasCorrect ? (isForceChoice ? pointsForType(q.type, expertMode) : choiceFallbackPoints(q.type, expertMode)) : 0,
+      points: wasCorrect ? choiceFallbackPoints(q.type, expertMode) : 0,
     });
   }
 
@@ -270,6 +264,7 @@ export default function QuizPage({ songTitles }) {
   }
 
   const isSongAnswer = SONG_ANSWER_TYPES.has(q.type);
+  const isBioAnswer = q.type === 'bio';
   const displayPrompt =
     q.type === 'lyric' && lyricLines ? `Which song is this lyric from?\n"${lyricLines.join('\n')}"` : q.prompt;
 
@@ -314,7 +309,7 @@ export default function QuizPage({ songTitles }) {
           buttons from visibly jumping when the answer reveals. */}
       <div className={`answer-surface${reveal ? ` revealed ${reveal.correct ? 'correct' : 'wrong'}` : ''}`}>
         {!reveal ? (
-          isForceChoice || choices ? (
+          choices ? (
             <div className="choices">
               {choices === null
                 ? 'Loading choices...'
@@ -326,9 +321,10 @@ export default function QuizPage({ songTitles }) {
             </div>
           ) : (
             <>
-              {isSongAnswer ? (
-                <SongAutocomplete
-                  songTitles={songTitles}
+              {isSongAnswer || isBioAnswer ? (
+                <Autocomplete
+                  options={isBioAnswer ? bioAnswers : songTitles}
+                  placeholder={isBioAnswer ? 'Type an answer...' : 'Type a song title...'}
                   value={answer}
                   onChange={setAnswer}
                   onSubmit={submitFreeAnswer}

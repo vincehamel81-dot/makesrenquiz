@@ -129,6 +129,13 @@ app.get('/api/songs', async (req, res) => {
   );
 });
 
+// Bio-fact answers for the quiz's bio-question autocomplete — same idea as
+// song-title autocomplete, just a different answer domain.
+app.get('/api/bio-facts/answers', async (_req, res) => {
+  const rows = await db.prepare('SELECT DISTINCT answer FROM bio_facts ORDER BY answer').all();
+  res.json(rows.map((r) => r.answer));
+});
+
 function slugify(title) {
   return title
     .toLowerCase()
@@ -374,8 +381,17 @@ app.delete('/api/history', requireAuth, async (req, res) => {
 // a lucky 4-choice guess or a lyric answer given only after peeking at
 // extra context, both of which already earn fewer points (see QuizPage.jsx's
 // TYPE_POINTS/LYRIC_REVEAL_POINTS/CHOICE_FALLBACK_POINTS) — points-vs-max is
-// the truer "did you actually know this" signal.
-const MAX_POINTS_SQL = `SUM(CASE question_type WHEN 'audio' THEN 45 WHEN 'lyric' THEN 50 ELSE 40 END)`;
+// the truer "did you actually know this" signal. Joined to questions for
+// q.difficulty since Expert Mode audio clips have their own higher ceiling
+// (95, not a flat 2x of normal) — a plain per-type max would let hard-mode
+// scores blow past 100%.
+const MAX_POINTS_SQL = `SUM(CASE
+  WHEN a.question_type = 'audio' AND q.difficulty = 'hard' THEN 95
+  WHEN a.question_type = 'audio' THEN 60
+  WHEN a.question_type = 'lyric' THEN 100
+  WHEN a.question_type = 'bio' THEN 60
+  ELSE 40
+END)`;
 app.get('/api/history', requireAuth, async (req, res) => {
   const userId = currentUserId(req);
   // active_song_count comes from the session an attempt belongs to; attempts
@@ -385,14 +401,18 @@ app.get('/api/history', requireAuth, async (req, res) => {
     .prepare(
       `SELECT date(a.played_at) as day, s.active_song_count as active_song_count,
               SUM(a.points) as points, COUNT(*) as attempts, ${MAX_POINTS_SQL} as max_points
-       FROM quiz_attempts a LEFT JOIN quiz_sessions s ON s.id = a.session_id
+       FROM quiz_attempts a
+       LEFT JOIN quiz_sessions s ON s.id = a.session_id
+       LEFT JOIN questions q ON q.id = a.question_id
        WHERE a.user_id = ? GROUP BY day, active_song_count ORDER BY day DESC`
     )
     .all(userId);
   const byType = await db
     .prepare(
-      `SELECT question_type, COUNT(*) as attempts, SUM(points) as points, ${MAX_POINTS_SQL} as max_points
-       FROM quiz_attempts WHERE user_id = ? GROUP BY question_type`
+      `SELECT a.question_type as question_type, COUNT(*) as attempts, SUM(a.points) as points, ${MAX_POINTS_SQL} as max_points
+       FROM quiz_attempts a
+       LEFT JOIN questions q ON q.id = a.question_id
+       WHERE a.user_id = ? GROUP BY a.question_type`
     )
     .all(userId);
   res.json({ daily, byType });

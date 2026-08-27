@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { normalize } from '../lib/normalize';
 
-export default function SongAutocomplete({ songTitles, value, onChange, onSubmit, disabled, autoFocus }) {
+export default function Autocomplete({ options, value, onChange, onSubmit, disabled, autoFocus, placeholder }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef(null);
@@ -12,8 +12,8 @@ export default function SongAutocomplete({ songTitles, value, onChange, onSubmit
     // Substring match, not just prefix — titles like "Earned It / Man's
     // World / Falling" need to be findable by any of their component names,
     // not just the first word.
-    return songTitles.filter((t) => normalize(t).includes(q)).slice(0, 8);
-  }, [value, songTitles]);
+    return options.filter((t) => normalize(t).includes(q)).slice(0, 8);
+  }, [value, options]);
 
   useEffect(() => setHighlight(0), [value]);
 
@@ -25,8 +25,8 @@ export default function SongAutocomplete({ songTitles, value, onChange, onSubmit
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  function selectMatch(title) {
-    onChange(title);
+  function selectMatch(option) {
+    onChange(option);
     setOpen(false);
   }
 
@@ -59,7 +59,7 @@ export default function SongAutocomplete({ songTitles, value, onChange, onSubmit
         value={value}
         disabled={disabled}
         autoFocus={autoFocus}
-        placeholder="Type a song title..."
+        placeholder={placeholder ?? 'Type a song title...'}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
@@ -69,16 +69,16 @@ export default function SongAutocomplete({ songTitles, value, onChange, onSubmit
       />
       {open && matches.length > 0 && (
         <ul className="autocomplete-list">
-          {matches.map((title, i) => (
+          {matches.map((option, i) => (
             <li
-              key={title}
+              key={option}
               className={i === highlight ? 'active' : ''}
               onMouseDown={(e) => {
                 e.preventDefault();
-                selectMatch(title);
+                selectMatch(option);
               }}
             >
-              {title}
+              {option}
             </li>
           ))}
         </ul>

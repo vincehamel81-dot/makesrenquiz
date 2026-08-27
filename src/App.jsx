@@ -42,12 +42,16 @@ function AccountControl() {
 
 export default function App() {
   const [songTitles, setSongTitles] = useState([]);
+  const [bioAnswers, setBioAnswers] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/songs')
       .then((r) => r.json())
       .then((songs) => setSongTitles(songs.map((s) => s.title)));
+    fetch('/api/bio-facts/answers')
+      .then((r) => r.json())
+      .then(setBioAnswers);
   }, []);
 
   return (
@@ -82,7 +86,7 @@ export default function App() {
               path="/"
               element={
                 <RequireAuth>
-                  <QuizPage songTitles={songTitles} />
+                  <QuizPage songTitles={songTitles} bioAnswers={bioAnswers} />
                 </RequireAuth>
               }
             />

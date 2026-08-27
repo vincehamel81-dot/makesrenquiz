@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
-import SongAutocomplete from '../components/SongAutocomplete';
+import Autocomplete from '../components/Autocomplete';
 
 export default function LookupPage() {
   const { isAdmin } = useAuth();
@@ -208,8 +208,8 @@ export default function LookupPage() {
             value={termDraft}
             onChange={(e) => setTermDraft(e.target.value)}
           />
-          <SongAutocomplete
-            songTitles={songs.map((s) => s.title)}
+          <Autocomplete
+            options={songs.map((s) => s.title)}
             value={songDraft}
             onChange={(v) => {
               setSongDraft(v);
