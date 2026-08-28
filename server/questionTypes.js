@@ -171,26 +171,54 @@ function recencyFactor(row) {
   return factor;
 }
 
+// Roulette-wheel pick of one item from a list of { weight } objects.
+function weightedPick(items) {
+  const total = items.reduce((s, item) => s + item.weight, 0);
+  let r = Math.random() * total;
+  for (const item of items) {
+    r -= item.weight;
+    if (r <= 0) return item;
+  }
+  return items[items.length - 1];
+}
+
 // Weighted-random pick of up to `n` rows from `rows`, without replacement,
-// skipping anything already in `usedIds`.
+// skipping anything already in `usedIds`. Two-stage: pick a song first
+// (weighted by that song's single best-available row, not the sum of its
+// rows), then pick a row within that song. A flat per-row draw let a
+// heavily-clipped song (23 audio rows) crowd out a thin one (3 rows) just
+// by having more entries in the pool, and let the same song repeat several
+// times in one session. Songs are excluded from re-picking within this call
+// once used, so a session covers distinct songs first and only repeats one
+// after every eligible song has already had a turn. Rows with no song_id
+// (e.g. general bio facts) are their own singleton group, unaffected.
 function pickWeighted(rows, n, usedIds) {
-  const pool = rows.map((row) => ({ row, weight: row.weight * recencyFactor(row) }));
   const picked = [];
-  for (let i = 0; i < n; i++) {
-    const candidates = pool.filter((p) => !usedIds.has(p.row.id));
-    if (candidates.length === 0) break;
-    const total = candidates.reduce((s, p) => s + p.weight, 0);
-    let r = Math.random() * total;
-    let sel = candidates[candidates.length - 1];
-    for (const p of candidates) {
-      r -= p.weight;
-      if (r <= 0) {
-        sel = p;
-        break;
-      }
+  let usedSongIds = new Set();
+  while (picked.length < n) {
+    const bySong = new Map();
+    for (const row of rows) {
+      if (usedIds.has(row.id)) continue;
+      const key = row.song_id ?? `row:${row.id}`;
+      if (usedSongIds.has(key)) continue;
+      if (!bySong.has(key)) bySong.set(key, []);
+      bySong.get(key).push(row);
     }
-    usedIds.add(sel.row.id);
-    picked.push(sel.row);
+    if (bySong.size === 0) {
+      if (usedSongIds.size === 0) break; // nothing eligible left at all
+      usedSongIds = new Set(); // every song had a turn — allow repeats now
+      continue;
+    }
+    const groups = [...bySong.entries()].map(([key, groupRows]) => ({
+      key,
+      groupRows,
+      weight: Math.max(...groupRows.map((row) => row.weight * recencyFactor(row))),
+    }));
+    const chosenGroup = weightedPick(groups);
+    const chosenRow = weightedPick(chosenGroup.groupRows.map((row) => ({ row, weight: row.weight * recencyFactor(row) }))).row;
+    usedIds.add(chosenRow.id);
+    usedSongIds.add(chosenGroup.key);
+    picked.push(chosenRow);
   }
   return picked;
 }
