@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import ClipPlayer from '../components/ClipPlayer';
+import { SCORING_TABLE } from '../lib/scoring';
 
 // v1 formula (placeholder, will be retuned): active_song_count * points,
 // from each user's best fully-completed session. Shorter sessions still
@@ -9,6 +10,7 @@ export default function LeaderboardPage() {
   const [data, setData] = useState(null);
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [attemptsBySession, setAttemptsBySession] = useState({});
+  const [showScoringKey, setShowScoringKey] = useState(false);
 
   useEffect(() => {
     fetch('/api/leaderboard')
@@ -33,7 +35,33 @@ export default function LeaderboardPage() {
 
   return (
     <div className="leaderboard">
-      <h2>Leaderboard</h2>
+      <h2>
+        Leaderboard{' '}
+        <span className="scoring-key-anchor">
+          <button
+            className="info-icon"
+            onClick={() => setShowScoringKey((v) => !v)}
+            aria-label="Scoring key"
+            title="Scoring key"
+          >
+            ?
+          </button>
+          {showScoringKey && (
+            <div className="scoring-key-popover">
+              <table>
+                <tbody>
+                  {SCORING_TABLE.map((row) => (
+                    <tr key={row.label}>
+                      <td>{row.label}</td>
+                      <td>{row.points}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </span>
+      </h2>
       <p className="song-meta">
         Top {limit} completed {session_length}-question sessions, score = (number of songs checked &divide; 2)
         &times; points earned.

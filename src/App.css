@@ -1092,3 +1092,65 @@ a.mini-badge {
     grid-template-columns: 1fr;
   }
 }
+
+/* Leaderboard's scoring-key "?" popover — click to toggle, not hover, so it
+   works on touch too. Anchored via the wrapping relatively-positioned span. */
+.scoring-key-anchor {
+  position: relative;
+  display: inline-block;
+}
+
+.info-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.8em;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.info-icon:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.scoring-key-popover {
+  position: absolute;
+  z-index: 20;
+  top: 28px;
+  left: 0;
+  min-width: 320px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: var(--text-sm);
+}
+
+.scoring-key-popover table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.scoring-key-popover td {
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.scoring-key-popover td:last-child {
+  text-align: right;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .scoring-key-popover {
+    min-width: 260px;
+    left: -10px;
+  }
+}

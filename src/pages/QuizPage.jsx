@@ -3,6 +3,14 @@ import { Link } from 'react-router-dom';
 import Autocomplete from '../components/Autocomplete';
 import ClipPlayer from '../components/ClipPlayer';
 import { answerMatches } from '../lib/normalize';
+import {
+  pointsForType,
+  LYRIC_REVEAL_POINTS,
+  MAX_LYRIC_REVEAL_TIER,
+  MAX_AUDIO_RETRY_TIER,
+  audioPointsForTier,
+  choiceFallbackPoints,
+} from '../lib/scoring';
 
 // bio now goes through the same free-text-first flow as these (autocomplete
 // against the full set of bio answers instead of song titles) — see
@@ -12,44 +20,8 @@ const SONG_ANSWER_TYPES = new Set(['audio', 'lyric', 'theme', 'follow-up']);
 // its own default (server/index.js's SESSION_LENGTH), which is also the
 // single source of truth leaderboard eligibility is checked against. One
 // constant to change, not two kept in sync by hand.
-// Hardcoded per-type point values. Audio's Expert Mode value (95) is a fixed
-// number, not a multiplier on the normal value — a flat 2x let hard-mode
-// scores blow past the max_points denominator server-side (see
-// server/index.js's MAX_POINTS_SQL), showing >100% accuracy on History.
-const DEFAULT_POINTS = 40; // theme/follow-up/album/collaborator/reference
-const BIO_POINTS = 60;
-function pointsForType(type, expertMode) {
-  if (type === 'audio') return expertMode ? 95 : 60;
-  if (type === 'bio') return BIO_POINTS;
-  return DEFAULT_POINTS;
-}
-// Lyric points still drop with each "...more" reveal — full credit for
-// nailing it cold, less for peeking at more context first.
-const LYRIC_REVEAL_POINTS = [100, 70, 50];
-const MAX_LYRIC_REVEAL_TIER = LYRIC_REVEAL_POINTS.length - 1;
-// Audio's parallel to the lyric reveal ladder: instead of revealing more of
-// the same content, "try another clip" swaps in a different clip from the
-// same song at a discount (-15/try, matching the lyric ladder's spirit of
-// trading points for an easier ask). Same tier count as lyric's ladder for
-// consistency, though the two are otherwise independent mechanics.
-const AUDIO_RETRY_POINTS = { normal: [60, 45, 30], hard: [95, 80, 65] };
-const MAX_AUDIO_RETRY_TIER = AUDIO_RETRY_POINTS.normal.length - 1;
-function audioPointsForTier(expertMode, tier) {
-  return (expertMode ? AUDIO_RETRY_POINTS.hard : AUDIO_RETRY_POINTS.normal)[tier];
-}
-// A correct pick from the 4-choice fallback (gave up on free-text first)
-// earns a flat consolation score reflecting recognition, not recall. It
-// still varies by type/difficulty — a bigger "cold" value implies a bigger
-// gap to the fallback value too.
-const CHOICE_FALLBACK_POINTS = 20; // theme/follow-up/album/collaborator/reference
-const LYRIC_CHOICE_FALLBACK_POINTS = 45;
-const BIO_CHOICE_FALLBACK_POINTS = 30;
-function choiceFallbackPoints(type, expertMode) {
-  if (type === 'audio') return expertMode ? 40 : 25;
-  if (type === 'lyric') return LYRIC_CHOICE_FALLBACK_POINTS;
-  if (type === 'bio') return BIO_CHOICE_FALLBACK_POINTS;
-  return CHOICE_FALLBACK_POINTS;
-}
+// Point values themselves live in ../lib/scoring.js, shared with the
+// Leaderboard's scoring-key tooltip so the two can't drift apart.
 
 async function fetchChoices(q) {
   const res = await fetch('/api/quiz/choices', {
