@@ -202,19 +202,25 @@ export default function SongsListPage() {
       )}
       <div className="data-table">
         <div className="data-table-row songs-table-row data-table-header">
+          <span className="row-number-header">#</span>
           {COLUMNS.map((c) => (
             <span key={c.key} className={`sortable${sortKey === c.key ? ' sort-active' : ''}`} onClick={() => toggleSort(c.key)}>
               {c.label} {sortKey === c.key ? (sortDir === 1 ? '▲' : '▼') : ''}
             </span>
           ))}
         </div>
-        {visible.map((s) => (
+        {visible.map((s, i) => (
           <div
             key={s.slug}
             className="data-table-row songs-table-row"
             role="button"
             onClick={() => navigate(`/songs/${s.slug}`)}
           >
+            {/* Position in the current sort/filter, not a stable id — it's meant to
+                answer "how many songs am I missing lyrics for," which only makes
+                sense relative to whatever's currently on screen. Re-sorting
+                naturally renumbers it since `visible` is already recomputed. */}
+            <span className="row-number">{i + 1}</span>
             <span className={`mini-badge ${s.known ? 'yes' : 'no'}`} title={s.known ? 'You quiz on this song' : 'Not in your quiz rotation'}>
               {s.known ? '✓' : ''}
             </span>

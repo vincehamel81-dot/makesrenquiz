@@ -492,7 +492,15 @@ a.data-table-row,
 }
 
 .songs-table-row {
-  grid-template-columns: 32px 1fr 64px 56px 56px 64px 40px;
+  grid-template-columns: 34px 32px 1fr 64px 56px 56px 64px 40px;
+}
+
+.row-number-header,
+.row-number {
+  color: var(--text);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .songs-list-controls {
