@@ -418,9 +418,62 @@ app.get('/api/history', requireAuth, async (req, res) => {
   res.json({ daily, byType });
 });
 
+// Per-attempt drilldown for one row of History's daily table — same shape
+// and pattern as /api/leaderboard/:sessionId/attempts, so a day's individual
+// clips can be reviewed (which one came up, was it a giveaway) the same way
+// a leaderboard session already can. active_song_count is optional to match
+// pre-session-tracking rows, which group under a null count in /api/history.
+app.get('/api/history/attempts', requireAuth, async (req, res) => {
+  const userId = currentUserId(req);
+  const day = req.query.day;
+  if (!day) return res.status(400).json({ error: 'day required' });
+  const hasCount = req.query.active_song_count !== undefined && req.query.active_song_count !== 'null';
+  const activeSongCount = hasCount ? Number(req.query.active_song_count) : null;
+
+  const rows = await db
+    .prepare(
+      `SELECT a.question_type as question_type, a.correct_answer as correct_answer, a.user_answer as user_answer,
+              a.mode as mode, a.was_correct as was_correct, a.points as points, q.file_path as file_path
+       FROM quiz_attempts a
+       LEFT JOIN quiz_sessions s ON s.id = a.session_id
+       LEFT JOIN questions q ON q.id = a.question_id
+       WHERE a.user_id = ? AND date(a.played_at) = ?
+         AND ${activeSongCount === null ? 's.active_song_count IS NULL' : 's.active_song_count = ?'}
+       ORDER BY a.id`
+    )
+    .all(...(activeSongCount === null ? [userId, day] : [userId, day, activeSongCount]));
+  res.json(rows.map((r) => ({ ...r, audio_url: r.file_path ? audioClipUrl(r.file_path) : null, file_path: undefined })));
+});
+
 // A "did you know" trivia snippet for a song, shown after answering
 app.get('/api/songs/:id/trivia', requireAuth, async (req, res) => {
   res.json(await randomTriviaForSong(Number(req.params.id)));
+});
+
+// "Try another clip from this song" — a discounted retry (QuizPage steps
+// the score down each time via its own AUDIO_RETRY_POINTS ladder). Just
+// needs one eligible clip at the same difficulty this song hasn't shown yet
+// in this exchange; no weighting needed for a single-song pool this small.
+app.get('/api/songs/:id/retry-clip', requireAuth, async (req, res) => {
+  const songId = Number(req.params.id);
+  const difficulty = req.query.difficulty === 'hard' ? 'hard' : 'normal';
+  const exclude = (req.query.exclude || '')
+    .split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n));
+
+  const placeholders = exclude.length ? exclude.map(() => '?').join(',') : null;
+  const row = await db
+    .prepare(
+      `SELECT id, file_path, duration_sec FROM questions
+       WHERE song_id = ? AND type = 'audio' AND difficulty = ? AND status IN ('pending','active')
+         ${placeholders ? `AND id NOT IN (${placeholders})` : ''}
+       ORDER BY RANDOM() LIMIT 1`
+    )
+    .get(songId, difficulty, ...exclude);
+
+  if (!row) return res.json({ error: 'no more clips available for this song' });
+  res.json({ id: row.id, audio_url: audioClipUrl(row.file_path), clip_duration_sec: row.duration_sec });
 });
 
 // Full song detail: lyrics + easter eggs, for the browsable song list
@@ -856,11 +909,13 @@ app.get('/api/leaderboard/:sessionId/attempts', async (req, res) => {
   if (!Number.isInteger(sessionId)) return res.status(400).json({ error: 'invalid session id' });
   const rows = await db
     .prepare(
-      `SELECT question_type, correct_answer, user_answer, mode, was_correct, points
-       FROM quiz_attempts WHERE session_id = ? ORDER BY id`
+      `SELECT a.question_type as question_type, a.correct_answer as correct_answer, a.user_answer as user_answer,
+              a.mode as mode, a.was_correct as was_correct, a.points as points, q.file_path as file_path
+       FROM quiz_attempts a LEFT JOIN questions q ON q.id = a.question_id
+       WHERE a.session_id = ? ORDER BY a.id`
     )
     .all(sessionId);
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, audio_url: r.file_path ? audioClipUrl(r.file_path) : null, file_path: undefined })));
 });
 
 // Vercel's runtime invokes the exported app directly per-request rather

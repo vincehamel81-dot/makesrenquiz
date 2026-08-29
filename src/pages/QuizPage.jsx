@@ -27,6 +27,16 @@ function pointsForType(type, expertMode) {
 // nailing it cold, less for peeking at more context first.
 const LYRIC_REVEAL_POINTS = [100, 70, 50];
 const MAX_LYRIC_REVEAL_TIER = LYRIC_REVEAL_POINTS.length - 1;
+// Audio's parallel to the lyric reveal ladder: instead of revealing more of
+// the same content, "try another clip" swaps in a different clip from the
+// same song at a discount (-15/try, matching the lyric ladder's spirit of
+// trading points for an easier ask). Same tier count as lyric's ladder for
+// consistency, though the two are otherwise independent mechanics.
+const AUDIO_RETRY_POINTS = { normal: [60, 45, 30], hard: [95, 80, 65] };
+const MAX_AUDIO_RETRY_TIER = AUDIO_RETRY_POINTS.normal.length - 1;
+function audioPointsForTier(expertMode, tier) {
+  return (expertMode ? AUDIO_RETRY_POINTS.hard : AUDIO_RETRY_POINTS.normal)[tier];
+}
 // A correct pick from the 4-choice fallback (gave up on free-text first)
 // earns a flat consolation score reflecting recognition, not recall. It
 // still varies by type/difficulty — a bigger "cold" value implies a bigger
@@ -66,6 +76,10 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   const [lyricLines, setLyricLines] = useState(null);
   const [expandedType, setExpandedType] = useState(null);
   const [expertMode, setExpertMode] = useState(false);
+  const [clipTier, setClipTier] = useState(0);
+  const [clipOverride, setClipOverride] = useState(null); // { id, audio_url, clip_duration_sec } once "try another clip" is used
+  const [triedClipIds, setTriedClipIds] = useState([]);
+  const [retryingClip, setRetryingClip] = useState(false);
 
   useEffect(() => {
     fetch('/api/user-songs')
@@ -164,9 +178,12 @@ export default function QuizPage({ songTitles, bioAnswers }) {
                       <div className="attempt-breakdown">
                         {attempts
                           .filter((a) => a.question_type === type)
-                          .map((a, i) => (
+                          .map((a, i) => {
+                            const sourceQuestion = questions.find((q) => q.id === a.question_id);
+                            return (
                             <div key={i} className={`attempt-row ${a.was_correct ? 'is-correct' : 'is-wrong'}`}>
                               <span className="attempt-answer">{a.correct_answer}</span>
+                              {sourceQuestion?.audio_url && <ClipPlayer src={sourceQuestion.audio_url} />}
                               {a.was_correct ? (
                                 <span className="attempt-status">
                                   ✓ {a.mode === 'choice' ? 'guessed from choices, ' : ''}+{a.points} pts
@@ -177,7 +194,8 @@ export default function QuizPage({ songTitles, bioAnswers }) {
                                 </span>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                       </div>
                     </td>
                   </tr>
@@ -194,7 +212,10 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   async function recordAttempt({ userAnswer, mode, wasCorrect, points }) {
     const attempt = {
       question_type: q.type,
-      question_id: q.id,
+      // The clip actually shown, not necessarily the session's original —
+      // "try another clip" swaps this so times_asked/times_correct (and any
+      // clip-identity drilldown) land on the clip the player actually judged.
+      question_id: activeClip.id,
       song_id: q.song_id,
       session_id: sessionId,
       prompt: q.prompt,
@@ -221,7 +242,13 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   function submitFreeAnswer() {
     if (!answer.trim()) return;
     const wasCorrect = answerMatches(answer, q.correct_answer);
-    const points = wasCorrect ? (q.type === 'lyric' ? LYRIC_REVEAL_POINTS[lyricTier] : pointsForType(q.type, expertMode)) : 0;
+    const points = wasCorrect
+      ? q.type === 'lyric'
+        ? LYRIC_REVEAL_POINTS[lyricTier]
+        : q.type === 'audio'
+          ? audioPointsForTier(expertMode, clipTier)
+          : pointsForType(q.type, expertMode)
+      : 0;
     recordAttempt({ userAnswer: answer, mode: 'free', wasCorrect, points });
   }
 
@@ -260,7 +287,33 @@ export default function QuizPage({ songTitles, bioAnswers }) {
     setTrivia(null);
     setLyricTier(0);
     setLyricLines(null);
+    setClipTier(0);
+    setClipOverride(null);
+    setTriedClipIds([]);
     setIndex((i) => i + 1);
+  }
+
+  // The clip actually on screen — the session's original one, or whichever
+  // one "try another clip" last swapped in. song_id/correct_answer/prompt
+  // never change on a swap, only which specific audio file is playing.
+  const activeClip = clipOverride ?? { id: q.id, audio_url: q.audio_url, clip_duration_sec: q.clip_duration_sec };
+
+  async function tryAnotherClip() {
+    if (clipTier >= MAX_AUDIO_RETRY_TIER || retryingClip) return;
+    setRetryingClip(true);
+    const exclude = [q.id, activeClip.id, ...triedClipIds].join(',');
+    const res = await fetch(
+      `/api/songs/${q.song_id}/retry-clip?difficulty=${expertMode ? 'hard' : 'normal'}&exclude=${exclude}`
+    );
+    const data = await res.json();
+    setRetryingClip(false);
+    if (data.error) {
+      setClipTier(MAX_AUDIO_RETRY_TIER); // song's out of distinct clips at this difficulty — hide the button, same as exhausted
+      return;
+    }
+    setTriedClipIds((ids) => [...ids, activeClip.id]);
+    setClipOverride({ id: data.id, audio_url: data.audio_url, clip_duration_sec: data.clip_duration_sec });
+    setClipTier((t) => t + 1);
   }
 
   const isSongAnswer = SONG_ANSWER_TYPES.has(q.type);
@@ -301,7 +354,7 @@ export default function QuizPage({ songTitles, bioAnswers }) {
       <p className="prompt" style={{ whiteSpace: 'pre-wrap' }}>
         {displayPrompt}
       </p>
-      {q.audio_url && <ClipPlayer src={q.audio_url} durationSec={q.clip_duration_sec ?? 5} />}
+      {activeClip.audio_url && <ClipPlayer src={activeClip.audio_url} durationSec={activeClip.clip_duration_sec ?? 5} />}
 
       {/* One stable card for the whole answering area — its size and position
           never change between "choosing" and "revealed," only its content
@@ -345,7 +398,7 @@ export default function QuizPage({ songTitles, bioAnswers }) {
                   Submit
                 </button>
                 <div className="actions-secondary">
-                  {lyricTier === 0 && (
+                  {lyricTier === 0 && clipTier === 0 && (
                     <button className="btn-secondary" onClick={revealChoices}>
                       I don't know — show 4 choices
                     </button>
@@ -353,6 +406,13 @@ export default function QuizPage({ songTitles, bioAnswers }) {
                   {q.type === 'lyric' && lyricTier < MAX_LYRIC_REVEAL_TIER && (
                     <button className="btn-secondary" onClick={revealMoreLyrics}>
                       Show more lyrics ({LYRIC_REVEAL_POINTS[lyricTier + 1]} pts)
+                    </button>
+                  )}
+                  {q.type === 'audio' && clipTier < MAX_AUDIO_RETRY_TIER && (
+                    <button className="btn-secondary" onClick={tryAnotherClip} disabled={retryingClip}>
+                      {retryingClip
+                        ? 'Finding a clip...'
+                        : `Try another clip from this song (${audioPointsForTier(expertMode, clipTier + 1)} pts)`}
                     </button>
                   )}
                 </div>

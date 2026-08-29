@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 // Plays only the first `durationSec` seconds of the underlying audio file,
 // with no seek bar exposed — the file itself may be longer (sliced generously
 // at build time) so difficulty can be tuned via calibration without re-encoding.
+// Omit durationSec entirely (review/breakdown contexts, where the original
+// quiz-time cutoff isn't known) to just play the file to its natural end.
 export default function ClipPlayer({ src, durationSec }) {
   const audioRef = useRef(null);
   const timeoutRef = useRef(null);
@@ -17,10 +19,12 @@ export default function ClipPlayer({ src, durationSec }) {
     audio.play();
     setPlaying(true);
     clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      audio.pause();
-      setPlaying(false);
-    }, durationSec * 1000);
+    if (durationSec) {
+      timeoutRef.current = setTimeout(() => {
+        audio.pause();
+        setPlaying(false);
+      }, durationSec * 1000);
+    }
   }
 
   function stop() {
@@ -37,7 +41,7 @@ export default function ClipPlayer({ src, durationSec }) {
       {playing ? (
         <button onClick={stop}>■ Stop</button>
       ) : (
-        <button onClick={play}>▶ Play clip ({durationSec}s)</button>
+        <button onClick={play}>▶ Play clip{durationSec ? ` (${durationSec}s)` : ''}</button>
       )}
     </div>
   );

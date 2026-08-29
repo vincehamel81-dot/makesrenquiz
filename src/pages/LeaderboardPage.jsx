@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
+import ClipPlayer from '../components/ClipPlayer';
 
 // v1 formula (placeholder, will be retuned): active_song_count * points,
 // from each user's best fully-completed session. Shorter sessions still
@@ -74,6 +75,7 @@ export default function LeaderboardPage() {
                           attemptsBySession[r.session_id].map((a, idx) => (
                             <div key={idx} className={`attempt-row ${a.was_correct ? 'is-correct' : 'is-wrong'}`}>
                               <span className="attempt-answer">{a.correct_answer}</span>
+                              {a.audio_url && <ClipPlayer src={a.audio_url} />}
                               {a.was_correct ? (
                                 <span className="attempt-status">
                                   ✓ {a.mode === 'choice' ? 'guessed from choices, ' : ''}+{a.points} pts
