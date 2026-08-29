@@ -84,6 +84,7 @@ export default function SongKnowledgePage() {
       )}
       <div className="data-table">
         <div className="data-table-row knowledge-table-row data-table-header">
+          <span className="row-number-header">#</span>
           {COLUMNS.map((c) => (
             <span
               key={c.key}
@@ -94,13 +95,14 @@ export default function SongKnowledgePage() {
             </span>
           ))}
         </div>
-        {sorted.map((s) => (
+        {sorted.map((s, i) => (
           <div
             key={s.slug}
             className="data-table-row knowledge-table-row"
             role="button"
             onClick={() => navigate(`/songs/${s.slug}`)}
           >
+            <span className="row-number">{i + 1}</span>
             <span className="song-link-title">{s.title}</span>
             {['lyrics', 'video', 'other'].map((key) => (
               <span key={key} className="mini-badge yes">

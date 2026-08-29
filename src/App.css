@@ -510,7 +510,7 @@ a.data-table-row,
 }
 
 .knowledge-table-row {
-  grid-template-columns: 1fr 118px 118px 118px 80px;
+  grid-template-columns: 34px 1fr 118px 118px 118px 80px;
 }
 
 .song-link-title {
