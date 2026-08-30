@@ -55,6 +55,7 @@ export default function SongDetailPage() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [addingEgg, setAddingEgg] = useState(false);
   const [editingEggId, setEditingEggId] = useState(null);
   const [eggForm, setEggForm] = useState(EMPTY_EGG_FORM);
@@ -144,18 +145,28 @@ export default function SongDetailPage() {
   function startEditing() {
     setDraft(detail.lyrics.map((l) => l.text).join('\n'));
     setEditing(true);
+    setSaveError('');
   }
 
   async function saveLyrics() {
     setSaving(true);
-    await fetch(`/api/songs/${slug}/lyrics`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: draft }),
-    });
-    setSaving(false);
-    setEditing(false);
-    load();
+    setSaveError('');
+    try {
+      const res = await fetch(`/api/songs/${slug}/lyrics`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: draft }),
+      });
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
+      setEditing(false);
+      load();
+    } catch (err) {
+      // Without this, a failed request (a dropped connection, a 502) left
+      // "Saving..." on screen forever with no way to tell it hadn't worked.
+      setSaveError(err.message || 'Save failed — try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteSong() {
@@ -379,10 +390,17 @@ export default function SongDetailPage() {
             <button onClick={saveLyrics} disabled={saving}>
               {saving ? 'Saving...' : 'Save'}
             </button>
-            <button onClick={() => setEditing(false)} disabled={saving}>
+            <button
+              onClick={() => {
+                setEditing(false);
+                setSaveError('');
+              }}
+              disabled={saving}
+            >
               Cancel
             </button>
           </div>
+          {saveError && <p className="title-error">{saveError}</p>}
         </>
       )}
 

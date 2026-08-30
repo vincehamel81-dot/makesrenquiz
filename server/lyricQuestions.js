@@ -7,7 +7,7 @@
 // the line before it, or if it's the first line of its section (so there's
 // no valid line before), the line after.
 // Safe to call any time lyrics change.
-import { db } from './db.js';
+import { db, batchWrite } from './db.js';
 
 const LYRIC_QUESTIONS_PER_SONG = 6;
 const MIN_LINE_LEN = 12;
@@ -147,11 +147,13 @@ export async function rebuildLyricQuestions() {
   }
 
   // Retire (not delete) existing lyric questions — some may already have
-  // quiz_attempts history referencing them via foreign key.
-  await db.exec(`UPDATE questions SET status = 'retired' WHERE type = 'lyric'`);
-  const insertLyricQuestion = db.prepare(
-    `INSERT INTO questions (type, song_id, start_line_no, context_lines, status) VALUES ('lyric', ?, ?, ?, 'pending')`
-  );
+  // quiz_attempts history referencing them via foreign key. Batched into one
+  // network round-trip with the inserts below rather than one await per
+  // statement — with ~150 songs x up to 6 questions each, that was ~900
+  // sequential round-trips to the remote Turso DB (~50s), which is what a
+  // lyrics save looked like it had hung on from the client's POV.
+  const statements = [{ sql: `UPDATE questions SET status = 'retired' WHERE type = 'lyric'`, args: [] }];
+  const insertSql = `INSERT INTO questions (type, song_id, start_line_no, context_lines, status) VALUES ('lyric', ?, ?, ?, 'pending')`;
 
   let totalAdded = 0;
   let excludedForOverlap = 0;
@@ -175,11 +177,12 @@ export async function rebuildLyricQuestions() {
     const step = Math.max(1, Math.floor(qualifying.length / LYRIC_QUESTIONS_PER_SONG));
     let added = 0;
     for (let i = 0; i < qualifying.length && added < LYRIC_QUESTIONS_PER_SONG; i += step) {
-      await insertLyricQuestion.run(songId, qualifying[i].startLineNo, qualifying[i].contextLines);
+      statements.push({ sql: insertSql, args: [songId, qualifying[i].startLineNo, qualifying[i].contextLines] });
       added++;
     }
     totalAdded += added;
   }
 
+  await batchWrite(statements);
   return { totalAdded, songCount: candidatesBySong.size, excludedForOverlap };
 }

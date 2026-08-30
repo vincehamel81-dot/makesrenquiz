@@ -32,11 +32,25 @@ function normalize(s) {
 
 const STOPWORDS = new Set(['the', 'a', 'an', 'of', 'in', 'on', 'to', 'is', 'my', 'your']);
 
+// Symmetric overlap, not "does actual contain wanted" — that flat-1 shortcut
+// treated "money game" as a perfect match against "money game pt 2" (a
+// substring-containment false positive for any base title with a numbered
+// sequel), which is how Money Game and Money Game, Pt. 2 ended up with
+// identical scraped lyrics. Extra unaccounted words in `actual` now pull the
+// score down instead of being ignored, so a numbered sequel's page scores
+// well under the confidence threshold against the base title.
 function titleOverlap(wanted, actual) {
-  if (actual.includes(wanted)) return 1;
-  const words = wanted.split(' ').filter((w) => w.length >= 3 && !STOPWORDS.has(w));
-  if (words.length === 0) return 0;
-  return words.filter((w) => actual.includes(w)).length / words.length;
+  if (actual === wanted) return 1;
+  const wantedWords = wanted.split(' ').filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+  // actual's word list is only stopword-filtered, not length-filtered — a
+  // short token like "2" or "pt" is exactly the kind of thing that
+  // disambiguates a numbered sequel from its base title, and dropping it
+  // for being short is what let "money game" silently score a perfect
+  // match against "money game pt 2".
+  const actualWords = actual.split(' ').filter((w) => !STOPWORDS.has(w));
+  if (wantedWords.length === 0) return 0;
+  const matched = wantedWords.filter((w) => actualWords.includes(w)).length;
+  return matched / Math.max(wantedWords.length, actualWords.length);
 }
 
 async function searchGenius(query) {
