@@ -1115,10 +1115,13 @@ a.mini-badge {
   border: 1px solid var(--surface-border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 0.8em;
+  font-size: 0.6em;
   line-height: 1;
   cursor: pointer;
   vertical-align: middle;
+  padding: 0px;
+  margin-left: 6px;
+  margin-bottom: 7px;
 }
 
 .info-icon:hover {

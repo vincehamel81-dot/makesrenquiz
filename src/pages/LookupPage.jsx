@@ -20,6 +20,9 @@ export default function LookupPage() {
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [editSongDraft, setEditSongDraft] = useState('');
+  const [editAddError, setEditAddError] = useState('');
+  const [addingSongToTerm, setAddingSongToTerm] = useState(false);
 
   function loadTerms() {
     fetch('/api/reference-terms')
@@ -71,6 +74,8 @@ export default function LookupPage() {
     setEditingTermId(t.id);
     setRenameDraft(t.term);
     setRenameError('');
+    setEditSongDraft('');
+    setEditAddError('');
   }
 
   async function saveRename(id) {
@@ -95,6 +100,35 @@ export default function LookupPage() {
 
   async function removeSongFromTerm(termId, slug) {
     await fetch(`/api/reference-terms/${termId}/songs/${slug}`, { method: 'DELETE' });
+    loadTerms();
+  }
+
+  // Same find-or-create endpoint the top-level "+ Add" form uses — the term
+  // already exists here, so it just links the new song to it (ON CONFLICT DO
+  // NOTHING covers re-adding one already there). Uses t.term, not whatever's
+  // sitting unsaved in the rename box, so adding a song doesn't depend on
+  // having saved a pending rename first.
+  async function addSongToTerm(t) {
+    const songTitle = editSongDraft.trim();
+    if (!songTitle) return;
+    if (!songs.some((s) => s.title.toLowerCase() === songTitle.toLowerCase())) {
+      setEditAddError('Pick a song from the list — no exact title match.');
+      return;
+    }
+    setAddingSongToTerm(true);
+    setEditAddError('');
+    const res = await fetch('/api/reference-terms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ term: t.term, song_title: songTitle }),
+    });
+    setAddingSongToTerm(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setEditAddError(data.error || 'Failed to add');
+      return;
+    }
+    setEditSongDraft('');
     loadTerms();
   }
 
@@ -155,7 +189,14 @@ export default function LookupPage() {
                   <button onClick={() => saveRename(t.id)} disabled={renaming || !renameDraft.trim()}>
                     {renaming ? 'Saving...' : 'Save'}
                   </button>{' '}
-                  <button type="button" onClick={() => setEditingTermId(null)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTermId(null);
+                      setEditSongDraft('');
+                      setEditAddError('');
+                    }}
+                  >
                     Cancel
                   </button>
                   {renameError && <p className="title-error">{renameError}</p>}
@@ -174,6 +215,26 @@ export default function LookupPage() {
                       </span>
                     ))}
                   </div>
+                  <div className="actions">
+                    <Autocomplete
+                      options={songs.map((s) => s.title)}
+                      placeholder="Add a song to this term..."
+                      value={editSongDraft}
+                      onChange={(v) => {
+                        setEditSongDraft(v);
+                        setEditAddError('');
+                      }}
+                      onSubmit={() => addSongToTerm(t)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addSongToTerm(t)}
+                      disabled={addingSongToTerm || !editSongDraft.trim()}
+                    >
+                      {addingSongToTerm ? 'Adding...' : 'Add song'}
+                    </button>
+                  </div>
+                  {editAddError && <p className="title-error">{editAddError}</p>}
                 </div>
               </li>
             ) : (
