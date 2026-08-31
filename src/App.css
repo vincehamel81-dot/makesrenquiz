@@ -1101,9 +1101,11 @@ a.mini-badge {
   }
 }
 
-/* Leaderboard's scoring-key "?" popover — click to toggle, not hover, so it
-   works on touch too. Anchored via the wrapping relatively-positioned span. */
-.scoring-key-anchor {
+/* Generic "?" info popover — click to toggle, not hover, so it works on
+   touch too. Anchored via the wrapping relatively-positioned span. Used by
+   the Leaderboard's scoring key and the Quiz page's catalog-quirks notes;
+   shared rather than duplicated so both stay visually consistent. */
+.info-popover-anchor {
   position: relative;
   display: inline-block;
 }
@@ -1129,7 +1131,7 @@ a.mini-badge {
   border-color: var(--accent);
 }
 
-.scoring-key-popover {
+.info-popover {
   position: absolute;
   z-index: 20;
   top: 28px;
@@ -1143,24 +1145,37 @@ a.mini-badge {
   font-size: var(--text-sm);
 }
 
-.scoring-key-popover table {
+.info-popover table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.scoring-key-popover td {
+.info-popover td {
   padding: 3px 6px;
   white-space: nowrap;
 }
 
-.scoring-key-popover td:last-child {
+.info-popover td:last-child {
   text-align: right;
   font-weight: 600;
   color: var(--accent);
 }
 
+.info-popover ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.info-popover li {
+  margin-bottom: 6px;
+}
+
+.info-popover li:last-child {
+  margin-bottom: 0;
+}
+
 @media (max-width: 640px) {
-  .scoring-key-popover {
+  .info-popover {
     min-width: 260px;
     left: -10px;
   }

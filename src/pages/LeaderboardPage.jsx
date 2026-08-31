@@ -37,7 +37,7 @@ export default function LeaderboardPage() {
     <div className="leaderboard">
       <h2>
         Leaderboard{' '}
-        <span className="scoring-key-anchor">
+        <span className="info-popover-anchor">
           <button
             className="info-icon"
             onClick={() => setShowScoringKey((v) => !v)}
@@ -47,7 +47,7 @@ export default function LeaderboardPage() {
             ?
           </button>
           {showScoringKey && (
-            <div className="scoring-key-popover">
+            <div className="info-popover">
               <table>
                 <tbody>
                   {SCORING_TABLE.map((row) => (

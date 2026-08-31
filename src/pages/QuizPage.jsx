@@ -11,6 +11,7 @@ import {
   audioPointsForTier,
   choiceFallbackPoints,
 } from '../lib/scoring';
+import { CATALOG_NOTES } from '../lib/catalogNotes';
 
 // bio now goes through the same free-text-first flow as these (autocomplete
 // against the full set of bio answers instead of song titles) — see
@@ -52,6 +53,7 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   const [clipOverride, setClipOverride] = useState(null); // { id, audio_url, clip_duration_sec } once "try another clip" is used
   const [triedClipIds, setTriedClipIds] = useState([]);
   const [retryingClip, setRetryingClip] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   useEffect(() => {
     fetch('/api/user-songs')
@@ -321,7 +323,26 @@ export default function QuizPage({ songTitles, bioAnswers }) {
         {currentAttempt && currentAttempt.points > 0 && (
           <span className="score-delta"> + {newTotalScaled - priorScoreScaled}</span>
         )}
-        )
+        ){' '}
+        <span className="info-popover-anchor">
+          <button
+            className="info-icon"
+            onClick={() => setShowNotes((v) => !v)}
+            aria-label="Catalog notes"
+            title="Catalog notes"
+          >
+            ?
+          </button>
+          {showNotes && (
+            <div className="info-popover">
+              <ul>
+                {CATALOG_NOTES.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </span>
       </p>
       <p className="prompt" style={{ whiteSpace: 'pre-wrap' }}>
         {displayPrompt}
