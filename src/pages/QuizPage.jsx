@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Autocomplete from '../components/Autocomplete';
 import ClipPlayer from '../components/ClipPlayer';
@@ -54,6 +54,15 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   const [triedClipIds, setTriedClipIds] = useState([]);
   const [retryingClip, setRetryingClip] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  // Guards against double-recording one question. setAttempts fires
+  // immediately but reveal only flips after an awaited trivia fetch, so the
+  // Submit/choice buttons stay clickable during that gap — a double-click or
+  // Enter-then-click in that window called recordAttempt twice, pushing two
+  // entries into `attempts` for one question and permanently shifting
+  // attempts[i] out of sync with questions[i] for the rest of the session.
+  // A ref (not state) so the check is synchronous even for two calls in the
+  // same tick, unlike state which only updates on the next render.
+  const answeredRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/user-songs')
@@ -184,6 +193,8 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   }
 
   async function recordAttempt({ userAnswer, mode, wasCorrect, points }) {
+    if (answeredRef.current) return; // already recorded this question — see answeredRef above
+    answeredRef.current = true;
     const attempt = {
       question_type: q.type,
       // The clip actually shown, not necessarily the session's original —
@@ -254,6 +265,7 @@ export default function QuizPage({ songTitles, bioAnswers }) {
   }
 
   function next() {
+    answeredRef.current = false;
     setAnswer('');
     setChoices(null);
     setSelectedChoice(null);
