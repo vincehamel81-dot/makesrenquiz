@@ -18,11 +18,17 @@ export function AuthProvider({ children }) {
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    setUser(null);
+    // Not setUser(null) — the very next request (this one included) mints a
+    // fresh guest account now that the cookie's cleared, so refresh() to
+    // pick that up rather than showing a momentary signed-out flash for a
+    // state the server won't actually be in.
+    refresh();
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin: user?.role === 'admin', checking, refresh, logout }}>
+    <AuthContext.Provider
+      value={{ user, isAdmin: user?.role === 'admin', isGuest: !!user?.is_guest, checking, refresh, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -25,9 +25,23 @@ const TABS = [
 ];
 
 function AccountControl() {
-  const { user, checking, logout } = useAuth();
+  const { user, isGuest, checking, logout } = useAuth();
   if (checking) return null;
   if (!user) return <GoogleSignInButton />;
+  if (isGuest) {
+    return (
+      <div className="account-control">
+        <Link
+          to="/profile"
+          className="account-name guest-name"
+          title="Playing as a guest — your progress is only saved in this browser. Sign in to keep it for good."
+        >
+          {user.display_name} (guest)
+        </Link>
+        <GoogleSignInButton />
+      </div>
+    );
+  }
   return (
     <div className="account-control">
       <Link to="/profile" className="account-name">

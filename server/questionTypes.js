@@ -1,16 +1,23 @@
 // Question bank: hydrates rows from `questions` into askable {prompt, correct_answer, ...}
 // objects, and implements adaptive (recency/frequency-weighted) session selection.
 import { db } from './db.js';
+import { DEFAULT_PREFERENCES } from './lib/defaults.js';
 
 export async function songRow(id) {
   return db.prepare('SELECT * FROM songs WHERE id = ?').get(id);
 }
 
-// Session composition. Defaults match the original fixed split; a user can
+// Session composition. Defaults match DEFAULT_PREFERENCES; a user can
 // override via user_preferences (see PUT /api/preferences). "trivia" covers
 // everything that isn't audio/lyric: theme, follow-up, album, collaborator,
-// bio, reference.
-const DEFAULT_BUCKET_TARGET = { audio: 0.6, lyric: 0.38, trivia: 0.02 };
+// bio, reference. Only hit for a pre-existing account with no saved
+// preferences row at all — every new account (guest or real) gets one
+// seeded up front now (see googleAuth.js's seedDefaultsForNewUser).
+const DEFAULT_BUCKET_TARGET = {
+  audio: DEFAULT_PREFERENCES.audio_pct / 100,
+  lyric: DEFAULT_PREFERENCES.lyric_pct / 100,
+  trivia: DEFAULT_PREFERENCES.trivia_pct / 100,
+};
 function bucketOf(type) {
   return type === 'audio' ? 'audio' : type === 'lyric' ? 'lyric' : 'trivia';
 }

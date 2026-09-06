@@ -11,12 +11,15 @@ import { currentUserId, requireAuth, requireAdmin } from './auth.js';
 import {
   verifyGoogleToken,
   findOrCreateUser,
+  createGuestUser,
+  migrateGuestToUser,
   signSession,
   verifySession,
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS,
 } from './googleAuth.js';
 import { DISPLAY_NAME_PATTERN } from './lib/randomDisplayName.js';
+import { DEFAULT_PREFERENCES } from './lib/defaults.js';
 
 // Standard quiz session length — also what a session needs to hit to be
 // leaderboard-eligible (see GET /api/leaderboard). Mirrored on the client
@@ -36,15 +39,49 @@ app.use(cookieParser());
 app.use('/audio', express.static(path.join(__dirname, '..', 'public', 'audio')));
 
 // Decodes the session cookie if present and sets req.userId/req.userRole —
-// never rejects by itself. requireAuth/requireAdmin (server/auth.js) are
-// what actually gate a route; routes that stay public (Songs, Lyric
-// lookup) just read currentUserId(req), which is null when signed out.
-app.use((req, _res, next) => {
+// requireAuth/requireAdmin (server/auth.js) are what actually gate a route;
+// routes that stay public (Songs, Lyric lookup) just read currentUserId(req).
+// No valid cookie at all (first visit, or an expired/cleared one) silently
+// mints a real but anonymous "guest" account instead of leaving the request
+// signed out — very few visitors were ever going to make an account before
+// playing, so the whole app (quiz, history, ratings, prefs) works
+// immediately, backed by a normal cookie-session account under the hood.
+// Signing in with Google later upgrades it in place (see /api/auth/google).
+// Known limitation: a first-ever visit fires several requests in parallel
+// (App.jsx's own bootstrap fetches, plus QuizPage's) before any of them has
+// seen a Set-Cookie yet, so more than one can independently decide "no
+// cookie, mint a guest" and only the last one's cookie actually sticks in
+// the browser — the others become small orphaned guest rows, same
+// (acceptable) shape as any other abandoned account in this app. Not fixed
+// here since it'd need a dedicated session-bootstrap round-trip the client
+// awaits before firing anything else, which is a bigger change for a
+// low-stakes, self-limiting cost (at most a couple of extra rows per fresh
+// visitor, never more).
+app.use(async (req, res, next) => {
   const token = req.cookies[SESSION_COOKIE_NAME];
   const session = token && verifySession(token);
   if (session) {
     req.userId = session.userId;
     req.userRole = session.role;
+    req.isGuest = !!session.isGuest;
+    return next();
+  }
+  try {
+    const guest = await createGuestUser();
+    const newSession = signSession(guest);
+    res.cookie(SESSION_COOKIE_NAME, newSession, {
+      httpOnly: true,
+      secure: !!process.env.VERCEL,
+      sameSite: 'lax',
+      maxAge: SESSION_COOKIE_MAX_AGE_MS,
+    });
+    req.userId = guest.id;
+    req.userRole = guest.role;
+    req.isGuest = true;
+  } catch (err) {
+    // Guest creation failing (DB hiccup) shouldn't take down every route —
+    // fall through signed-out, same as before this existed.
+    console.error('guest account creation failed:', err);
   }
   next();
 });
@@ -58,7 +95,18 @@ app.post('/api/auth/google', async (req, res) => {
   } catch {
     return res.status(401).json({ error: 'invalid Google token' });
   }
+  // The auth middleware above has already resolved *this* request's guest
+  // (if any) before we overwrite the cookie below — capture it now.
+  const priorGuestId = req.isGuest ? req.userId : null;
+
   const user = await findOrCreateUser(payload);
+  // Only safe to fold a guest's data into a brand-new account — see
+  // migrateGuestToUser's comment for why an existing account doesn't get
+  // the same treatment.
+  if (priorGuestId && user.isNew) {
+    await migrateGuestToUser(priorGuestId, user.id);
+  }
+
   const session = signSession(user);
   res.cookie(SESSION_COOKIE_NAME, session, {
     httpOnly: true,
@@ -77,9 +125,9 @@ app.post('/api/auth/logout', (_req, res) => {
 app.get('/api/me', async (req, res) => {
   if (!req.userId) return res.json(null);
   const user = await db
-    .prepare('SELECT id, name, display_name, email, role, picture_url FROM users WHERE id = ?')
+    .prepare('SELECT id, name, display_name, email, role, picture_url, is_guest FROM users WHERE id = ?')
     .get(req.userId);
-  res.json(user ?? null);
+  res.json(user ? { ...user, is_guest: !!user.is_guest } : null);
 });
 
 // The public-facing username (topbar, Leaderboard) — kept separate from the
@@ -207,7 +255,10 @@ app.delete('/api/user-songs/:songId', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-const DEFAULT_PREFERENCES = { audio_pct: 60, lyric_pct: 38, trivia_pct: 2, expert_mode: false };
+// DEFAULT_PREFERENCES now lives in ./lib/defaults.js, shared with
+// googleAuth.js's seedDefaultsForNewUser so a new account's actually-saved
+// row and this GET fallback (for old accounts predating that seeding) never
+// drift apart.
 
 // Your audio/lyric/trivia quiz mix. No saved row yet just means "use the
 // defaults" — same pattern as ratings, nothing is written until you save.

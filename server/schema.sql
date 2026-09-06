@@ -15,7 +15,12 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE,
   google_sub TEXT,
   role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user')),
-  picture_url TEXT
+  picture_url TEXT,
+  -- A real row like any other, just never linked to a Google account (see
+  -- googleAuth.js's createGuestUser) — lets the whole app work with zero
+  -- signup friction. A plain flag rather than a third `role` value, since
+  -- that's a CHECK constraint and Turso can't ALTER one in place.
+  is_guest INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_display_name ON users(display_name COLLATE NOCASE);

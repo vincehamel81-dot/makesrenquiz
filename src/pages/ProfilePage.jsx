@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { usePersistedState } from '../lib/usePersistedState';
 import { useAuth } from '../lib/AuthContext';
 import RankingModal from '../components/RankingModal';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 const NO_ALBUM = 'Singles / Other';
 const DISPLAY_NAME_PATTERN = /^[a-zA-Z0-9]{3,15}$/;
@@ -12,7 +13,7 @@ function sortValue(song, key) {
 }
 
 export default function ProfilePage() {
-  const { user, refresh } = useAuth();
+  const { user, isGuest, refresh } = useAuth();
   const [nameDraft, setNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
@@ -175,6 +176,17 @@ export default function ProfilePage() {
   return (
     <div className="profile">
       <h2>Profile</h2>
+
+      {isGuest && (
+        <div className="guest-warning">
+          <p>
+            You're playing as a guest — everything below (checklist, quiz mix, ratings, history) is only saved in
+            this browser. Clear your cookies, use a different browser, or switch devices, and it's gone. Sign in with
+            Google to keep it for good — your current guest progress carries over automatically.
+          </p>
+          <GoogleSignInButton />
+        </div>
+      )}
 
       <h3>Display name</h3>
       <p className="song-meta">
