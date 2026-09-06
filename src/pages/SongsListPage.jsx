@@ -7,7 +7,6 @@ const COLUMNS = [
   { key: 'known', label: '' },
   { key: 'title', label: 'Title' },
   { key: 'lyrics', label: 'Lyrics' },
-  { key: 'clips', label: 'Clips' },
   { key: 'eggs', label: 'Gems' },
   { key: 'rating', label: 'Rating' },
   { key: 'yt', label: 'YT' },
@@ -21,8 +20,6 @@ function sortValue(song, key) {
       return song.title.toLowerCase();
     case 'lyrics':
       return song.lyricLineCount;
-    case 'clips':
-      return song.clipCount;
     case 'eggs':
       return song.easterEggCount;
     case 'rating':
@@ -231,14 +228,14 @@ export default function SongsListPage() {
             <span className={`mini-badge ${s.lyricLineCount > 0 ? 'yes' : 'no'}`} title="Lyrics">
               📝 {s.lyricLineCount > 0 ? 'yes' : 'no'}
             </span>
-            <span className={`mini-badge ${s.clipCount > 0 ? 'yes' : 'no'}`} title="Audio clips">
-              🎵 {s.clipCount}
-            </span>
             <span className={`mini-badge ${s.easterEggCount > 0 ? 'yes' : 'no'}`} title="Gems">
               💎 {s.easterEggCount}
             </span>
-            <span className={`mini-badge ${s.rating > 0 ? 'yes' : 'no'}`} title="Your rating">
-              ⭐ {s.rating || '-'}
+            {/* rating stores 999 = 1st, 998 = 2nd, ... (DB shape stays as-is — see
+                RankingModal) but showing the raw number as "your rating" reads
+                backwards and means nothing on its own; show rank position instead. */}
+            <span className={`mini-badge ${s.rating > 0 ? 'yes' : 'no'}`} title="Your rank">
+              ⭐ {s.rating > 0 ? 1000 - s.rating : '-'}
             </span>
             {s.youtube_url ? (
               <a

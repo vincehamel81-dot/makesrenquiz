@@ -338,7 +338,8 @@ export default function SongDetailPage() {
 
       {user && (
         <p className="song-meta">
-          Your rating: {detail.rating > 0 ? detail.rating : 'not ranked yet'} — manage it from{' '}
+          {/* rating stores 999 = 1st, 998 = 2nd, ... — show rank position, not the raw number */}
+          Your rank: {detail.rating > 0 ? `#${1000 - detail.rating}` : 'not ranked yet'} — manage it from{' '}
           <Link to="/profile">Profile</Link>.
         </p>
       )}

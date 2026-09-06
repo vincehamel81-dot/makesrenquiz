@@ -1,148 +1,109 @@
 import { useState } from 'react';
-import { useTheme } from '../lib/ThemeContext';
 
 const WIDTH = 640;
 const HEIGHT = 220;
-const PAD = { top: 16, right: 16, bottom: 28, left: 36 };
-// Colorblind-checked categorical sets, tuned per-mode for contrast against
-// the page background — independent of --accent, since the chart's job is
-// series identity, not brand color.
-const PALETTE_LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
-const PALETTE_DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+const PAD = { top: 16, right: 16, bottom: 28, left: 46 };
 
-function seriesLabel(count) {
-  return count === null ? 'Before tracking' : `${count} song${count === 1 ? '' : 's'}`;
+// Score progression — a lightweight dependency-free inline-SVG line chart.
+// One point per daily row, plotted as the same scaled score the Leaderboard
+// and live quiz score already use ((active_song_count / 2) * points) — that
+// scaling exists specifically to make scores comparable across different
+// song-counts, so reusing it here means a single continuous line still means
+// something even if you toggle your checked-songs list often. An earlier
+// version split into one line per distinct active_song_count, which fell
+// apart the same way raw accuracy would: toggling your list a lot produces
+// a line per count (potentially dozens), and even a repeated count doesn't
+// guarantee the same set of songs was checked both times, so treating it as
+// one stable "cohort" was shaky to begin with.
+function scaledScore(row) {
+  return Math.round(((row.active_song_count ?? 0) / 2) * row.points);
 }
 
-// Daily accuracy trend — a lightweight dependency-free inline-SVG line chart.
-// One line per distinct `active_song_count` value (how many songs were
-// checked at quiz time), since accuracy on 5 songs isn't comparable to
-// accuracy on 50. Rows from before session-tracking existed carry a null
-// count and group into their own "Before tracking" line rather than being
-// dropped.
 export default function TrendChart({ daily }) {
-  const [hoverDay, setHoverDay] = useState(null);
-  const { theme } = useTheme();
-  const PALETTE = theme === 'dark' ? PALETTE_DARK : PALETTE_LIGHT;
+  const [hoverIndex, setHoverIndex] = useState(null);
 
   if (daily.length === 0) return <p>No attempts logged yet — play a session first.</p>;
 
-  const days = [...new Set(daily.map((d) => d.day))].sort();
+  // API returns newest-first; the chart reads left-to-right chronologically.
+  // Same-day multiple sessions each still get their own point, in whatever
+  // order they came back in — the day label just repeats for that stretch.
+  const points = [...daily].reverse().map((d) => ({ ...d, score: scaledScore(d) }));
 
-  if (days.length === 1) {
-    const totals = daily.reduce(
-      (acc, d) => ({ points: acc.points + d.points, maxPoints: acc.maxPoints + d.max_points }),
-      { points: 0, maxPoints: 0 }
-    );
-    const pct = Math.round((100 * totals.points) / totals.maxPoints);
+  if (points.length === 1) {
     return (
       <p>
-        {days[0]}: {pct}% accuracy ({totals.points}/{totals.maxPoints} pts). Play another day to see a trend.
+        {points[0].day}: score {points[0].score}. Play another day to see a trend.
       </p>
     );
   }
 
-  const dayIndex = new Map(days.map((d, i) => [d, i]));
-  const seriesKeys = [...new Set(daily.map((d) => d.active_song_count))].sort((a, b) => (a ?? Infinity) - (b ?? Infinity));
-
-  const series = seriesKeys.map((key, si) => ({
-    key,
-    label: seriesLabel(key),
-    color: PALETTE[si % PALETTE.length],
-    points: daily
-      .filter((d) => d.active_song_count === key)
-      .map((d) => ({ ...d, i: dayIndex.get(d.day), pct: (100 * d.points) / d.max_points }))
-      .sort((a, b) => a.i - b.i),
-  }));
+  const scores = points.map((p) => p.score);
+  const minScore = Math.min(0, ...scores);
+  const maxScore = Math.max(...scores) || 1;
+  const range = maxScore - minScore || 1;
 
   const innerW = WIDTH - PAD.left - PAD.right;
   const innerH = HEIGHT - PAD.top - PAD.bottom;
-  const x = (i) => PAD.left + (innerW * i) / (days.length - 1);
-  const y = (pct) => PAD.top + innerH * (1 - pct / 100);
-  const gridLines = [0, 25, 50, 75, 100];
+  const x = (i) => PAD.left + (innerW * i) / (points.length - 1);
+  const y = (score) => PAD.top + innerH * (1 - (score - minScore) / range);
 
-  const hoverRows = hoverDay === null ? [] : daily.filter((d) => d.day === days[hoverDay]);
+  // 5 evenly-spaced grid lines from minScore to maxScore, rounded to whole
+  // numbers so the axis doesn't show fractional scores.
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(minScore + range * t));
+
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(p.score)}`).join(' ');
 
   return (
     <div className="trend-chart">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Daily accuracy trend by number of songs">
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Score progression over time">
         {gridLines.map((g) => (
           <g key={g}>
             <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y(g)} y2={y(g)} className="trend-grid" />
             <text x={PAD.left - 8} y={y(g)} className="trend-axis-label" textAnchor="end" dominantBaseline="middle">
-              {g}%
+              {g}
             </text>
           </g>
         ))}
 
-        {series.map((s) => (
-          <path
-            key={s.key ?? 'legacy'}
-            d={s.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(p.i)} ${y(p.pct)}`).join(' ')}
-            className="trend-line"
-            style={{ stroke: s.color }}
-            fill="none"
-          />
+        <path d={path} className="trend-line" fill="none" />
+
+        {points.map((p, i) => (
+          <circle key={i} cx={x(i)} cy={y(p.score)} r={hoverIndex === i ? 5 : 3} className="trend-dot" />
         ))}
 
-        {series.map((s) =>
-          s.points.map((p) => (
-            <circle
-              key={`${s.key ?? 'legacy'}-${p.day}`}
-              cx={x(p.i)}
-              cy={y(p.pct)}
-              r={hoverDay === p.i ? 5 : 3}
-              className="trend-dot"
-              style={{ fill: s.color }}
-            />
-          ))
-        )}
-
-        {days.map((day, i) => (
+        {points.map((p, i) => (
           <rect
-            key={day}
-            x={x(i) - innerW / days.length / 2}
+            key={i}
+            x={x(i) - innerW / points.length / 2}
             y={PAD.top}
-            width={innerW / days.length}
+            width={innerW / points.length}
             height={innerH}
             fill="transparent"
-            onMouseEnter={() => setHoverDay(i)}
-            onMouseLeave={() => setHoverDay((h) => (h === i ? null : h))}
+            onMouseEnter={() => setHoverIndex(i)}
+            onMouseLeave={() => setHoverIndex((h) => (h === i ? null : h))}
           />
         ))}
 
-        {hoverDay !== null && (
-          <line x1={x(hoverDay)} x2={x(hoverDay)} y1={PAD.top} y2={HEIGHT - PAD.bottom} className="trend-crosshair" />
+        {hoverIndex !== null && (
+          <line x1={x(hoverIndex)} x2={x(hoverIndex)} y1={PAD.top} y2={HEIGHT - PAD.bottom} className="trend-crosshair" />
         )}
 
-        {days.map(
-          (day, i) =>
-            (i === 0 || i === days.length - 1 || i % Math.ceil(days.length / 6) === 0) && (
-              <text key={day} x={x(i)} y={HEIGHT - PAD.bottom + 16} className="trend-axis-label" textAnchor="middle">
-                {day.slice(5)}
+        {points.map(
+          (p, i) =>
+            (i === 0 || i === points.length - 1 || i % Math.ceil(points.length / 6) === 0) && (
+              <text key={i} x={x(i)} y={HEIGHT - PAD.bottom + 16} className="trend-axis-label" textAnchor="middle">
+                {p.day.slice(5)}
               </text>
             )
         )}
       </svg>
 
-      <div className="trend-legend">
-        {series.map((s) => (
-          <span key={s.key ?? 'legacy'} className="trend-legend-item">
-            <span className="trend-legend-swatch" style={{ background: s.color }} />
-            {s.label}
-          </span>
-        ))}
-      </div>
-
-      {hoverDay !== null && (
+      {hoverIndex !== null && (
         <div className="trend-tooltip">
-          <strong>{days[hoverDay]}</strong>
-          {hoverRows.map((r) => (
-            <div key={r.active_song_count ?? 'legacy'}>
-              {seriesLabel(r.active_song_count)}: {Math.round((100 * r.points) / r.max_points)}% ({r.points}/
-              {r.max_points} pts)
-            </div>
-          ))}
+          <strong>{points[hoverIndex].day}</strong> — score {points[hoverIndex].score} (
+          {points[hoverIndex].active_song_count ?? '—'} songs, {points[hoverIndex].points}/
+          {points[hoverIndex].max_points} pts,{' '}
+          {Math.round((100 * points[hoverIndex].points) / points[hoverIndex].max_points)}% accuracy)
         </div>
       )}
     </div>
