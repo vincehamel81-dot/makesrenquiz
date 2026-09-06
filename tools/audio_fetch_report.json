@@ -1222,5 +1222,11 @@
     "matched": "(manually confirmed URL)",
     "url": "https://www.youtube.com/watch?v=L0AEgqkAE3c",
     "needsReview": false
+  },
+  "walking-on-the-moon-no-diggity": {
+    "title": "Walking on the moon / No Diggity",
+    "matched": "(manually confirmed URL)",
+    "url": "https://www.youtube.com/watch?v=KzpwTgaJYPg",
+    "needsReview": false
   }
 }

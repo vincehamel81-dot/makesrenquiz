@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS songs (
   themes TEXT,              -- JSON array of strings
   follow_up_to_id INTEGER REFERENCES songs(id),
   youtube_url TEXT,
+  live_youtube_url TEXT, -- a live-performance video, for the handful of songs with one (see tools/addLiveVersion.js)
   duration_sec REAL,
   notes TEXT
 );
