@@ -64,6 +64,9 @@ export default function SongDetailPage() {
   const videoBlockRef = useRef(null);
   const [urlDraft, setUrlDraft] = useState('');
   const [savingUrl, setSavingUrl] = useState(false);
+  const [showLiveVideo, setShowLiveVideo] = useState(false);
+  const [liveUrlDraft, setLiveUrlDraft] = useState('');
+  const [savingLiveUrl, setSavingLiveUrl] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
@@ -90,6 +93,10 @@ export default function SongDetailPage() {
   useEffect(() => {
     if (detail) setUrlDraft(detail.youtube_url ?? '');
   }, [detail?.youtube_url]);
+
+  useEffect(() => {
+    if (detail) setLiveUrlDraft(detail.live_youtube_url ?? '');
+  }, [detail?.live_youtube_url]);
 
   useEffect(() => {
     if (detail) setTitleDraft(detail.title);
@@ -129,6 +136,17 @@ export default function SongDetailPage() {
     });
     setDetail((d) => ({ ...d, youtube_url: urlDraft.trim() || null }));
     setSavingUrl(false);
+  }
+
+  async function saveLiveUrl() {
+    setSavingLiveUrl(true);
+    await fetch(`/api/songs/${slug}/live-youtube-url`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ live_youtube_url: liveUrlDraft }),
+    });
+    setDetail((d) => ({ ...d, live_youtube_url: liveUrlDraft.trim() || null }));
+    setSavingLiveUrl(false);
   }
 
   async function saveAlbum() {
@@ -328,6 +346,50 @@ export default function SongDetailPage() {
               ) : (
                 <p>
                   <a href={detail.youtube_url} target="_blank" rel="noreferrer">
+                    Open link
+                  </a>
+                </p>
+              ))}
+          </>
+        )}
+      </div>
+
+      <div className="video-embed-block">
+        {isAdmin && (
+          <div className="rating-field">
+            <label>
+              Live version (optional — its audio is merged into the clip pool, see tools/addLiveVersion.js):
+              <input
+                type="text"
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={liveUrlDraft}
+                onChange={(e) => setLiveUrlDraft(e.target.value)}
+                className="youtube-url-input"
+              />
+            </label>
+            <button onClick={saveLiveUrl} disabled={savingLiveUrl || liveUrlDraft === (detail.live_youtube_url ?? '')}>
+              {savingLiveUrl ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
+        {detail.live_youtube_url && (
+          <>
+            <button onClick={() => setShowLiveVideo((v) => !v)}>
+              {showLiveVideo ? 'Hide player' : '▶ Watch live version'}
+            </button>
+            {showLiveVideo &&
+              (youtubeVideoId(detail.live_youtube_url) ? (
+                <div className="video-embed">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${youtubeVideoId(detail.live_youtube_url)}`}
+                    title={`${detail.title} (live) on YouTube`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              ) : (
+                <p>
+                  <a href={detail.live_youtube_url} target="_blank" rel="noreferrer">
                     Open link
                   </a>
                 </p>

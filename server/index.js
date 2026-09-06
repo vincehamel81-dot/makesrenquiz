@@ -783,6 +783,17 @@ app.put('/api/songs/:slug/youtube-url', requireAdmin, async (req, res) => {
   res.json({ ok: true, youtube_url: url });
 });
 
+// A second video for the handful of songs with a separate live performance
+// (see tools/addLiveVersion.js, which also merges its audio into the clip
+// pool) — purely informational here, just something to watch/link to.
+app.put('/api/songs/:slug/live-youtube-url', requireAdmin, async (req, res) => {
+  const song = await db.prepare('SELECT id FROM songs WHERE slug = ?').get(req.params.slug);
+  if (!song) return res.status(404).json({ error: 'not found' });
+  const url = (req.body.live_youtube_url || '').trim() || null;
+  await db.prepare('UPDATE songs SET live_youtube_url = ? WHERE id = ?').run(url, song.id);
+  res.json({ ok: true, live_youtube_url: url });
+});
+
 // Word/name lookup across lyrics — whole-word match (so "rain" doesn't hit
 // "trainer"). SQLite LIKE has no word-boundary concept, so we pre-filter
 // broadly with LIKE (cheap, uses the text index) then apply a real regex
