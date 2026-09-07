@@ -358,7 +358,7 @@ export default function SongDetailPage() {
         {isAdmin && (
           <div className="rating-field">
             <label>
-              Live version (optional — its audio is merged into the clip pool, see tools/addLiveVersion.js):
+              2nd version:
               <input
                 type="text"
                 placeholder="https://www.youtube.com/watch?v=..."
@@ -375,14 +375,14 @@ export default function SongDetailPage() {
         {detail.live_youtube_url && (
           <>
             <button onClick={() => setShowLiveVideo((v) => !v)}>
-              {showLiveVideo ? 'Hide player' : '▶ Watch live version'}
+              {showLiveVideo ? 'Hide player' : '▶ Watch 2nd version'}
             </button>
             {showLiveVideo &&
               (youtubeVideoId(detail.live_youtube_url) ? (
                 <div className="video-embed">
                   <iframe
                     src={`https://www.youtube.com/embed/${youtubeVideoId(detail.live_youtube_url)}`}
-                    title={`${detail.title} (live) on YouTube`}
+                    title={`${detail.title} (2nd version) on YouTube`}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                   />
